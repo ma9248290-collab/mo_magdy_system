@@ -903,7 +903,7 @@ window.processStudentSaving = async function(keepOpen) {
     if(typeof addSystemLog === "function") addSystemLog("إضافة طالب 🎓", `تسجيل الطالب: ${name} (كود: ${code}) في ${group}`);
 
     // إرسال الواتساب
-    const portalLink = `https://ma9248290-collab.github.io/historya-systtem/parent.html`;
+    const portalLink = `https://ma9248290-collab.github.io/mo_magdy_system/parent.html`;
     const teacherName = localStorage.getItem("teacherName") || "Sami Samir";
     const centerName = localStorage.getItem("centerName") || "هيستوريا";
 
@@ -1226,56 +1226,41 @@ function backToGroups() { currentActiveGroup = null; document.getElementById("gr
 
 window.renderGroupStudentsTable = function() { 
     const tbody = document.getElementById("group-students-list"); 
-    tbody.innerHTML = ""; 
     const groupStudents = students.filter(s => s.group === currentActiveGroup); 
     
     if(groupStudents.length === 0) {
         return tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 20px; font-weight: bold; color: var(--text-muted);">لا يوجد طلاب في هذه المجموعة</td></tr>`; 
     }
 
-    // 1. استخراج آخر 4 حصص لهذه المجموعة وترتيبهم من الأقدم للأحدث
     let last4Sessions = classSessions
         .filter(s => s.group === currentActiveGroup)
         .sort((a, b) => new Date(a.date) - new Date(b.date))
         .slice(-4);
 
+    let htmlContent = ""; // 👈 المتغير المنقذ للتهنيج
+
     groupStudents.forEach((student) => { 
-        // 2. تصميم بادج المسار (عام / أزهر / بكالوريا)
         let trackName = student.track || 'عام';
         let trackBadge = `<span style="font-size: 11px; background: rgba(59, 130, 246, 0.1); color: var(--primary-color); padding: 3px 8px; border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.2); margin-top: 5px; display: inline-block; font-weight: bold;">🎓 ${trackName}</span>`;
 
-        // 3. تصميم نقط الحضور (آخر 4 حصص)
         let attendanceDotsHtml = `<div style="display: flex; gap: 6px; justify-content: center; align-items: center;" dir="rtl">`;
         
-        // هنعمل لوب 4 مرات عشان دايماً نعرض 4 نقط (حتى لو الجروب لسه مفيش فيه 4 حصص)
         for(let i = 0; i < 4; i++) {
             let session = last4Sessions[i];
-            let dotColor = "#e2e8f0"; // لون رصاصي افتراضي (لو مفيش حصة أو متسجلش)
+            let dotColor = "#e2e8f0"; 
             let tooltipText = "لا توجد حصة / لم يسجل";
 
             if (session) {
                 let status = session.attendance[student.code] || session.attendance[student.phone];
-                if (status === 'present') { 
-                    dotColor = "#10b981"; // أخضر - حاضر
-                    tooltipText = `${session.date}: حاضر ✅`; 
-                }
-                else if (status === 'late') { 
-                    dotColor = "#f59e0b"; // أصفر/برتقالي - متأخر
-                    tooltipText = `${session.date}: متأخر ⏳`; 
-                }
-                else if (status === 'absent') { 
-                    dotColor = "#ef4444"; // أحمر - غائب
-                    tooltipText = `${session.date}: غائب ❌`; 
-                }
+                if (status === 'present') { dotColor = "#10b981"; tooltipText = `${session.date}: حاضر ✅`; }
+                else if (status === 'late') { dotColor = "#f59e0b"; tooltipText = `${session.date}: متأخر ⏳`; }
+                else if (status === 'absent') { dotColor = "#ef4444"; tooltipText = `${session.date}: غائب ❌`; }
             }
-
-            // رسم النقطة (مع إضافة Tooltip يظهر التفاصيل لما تقف عليها بالماوس)
             attendanceDotsHtml += `<span style="width: 14px; height: 14px; border-radius: 50%; background-color: ${dotColor}; display: inline-block; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); cursor: help;" title="${tooltipText}"></span>`;
         }
         attendanceDotsHtml += `</div>`;
 
-        // 4. رسم الصف في الجدول
-        tbody.innerHTML += `
+        htmlContent += `
         <tr>
             <td><strong style="color:var(--primary-color); font-size: 16px;">${student.code}</strong></td>
             <td>
@@ -1294,6 +1279,8 @@ window.renderGroupStudentsTable = function() {
             </td>
         </tr>`; 
     }); 
+    
+    tbody.innerHTML = htmlContent; // 👈 التحديث مرة واحدة
 };
 
 function removeStudentFromGroup(code) { customConfirm("إزالة هذا الطالب من المجموعة؟", () => { const student = students.find(s => s.code === code); if(student) { student.group = ""; localStorage.setItem("students", JSON.stringify(students)); renderGroupStudentsTable(); renderGroupCards(); showToast("تمت الإزالة"); } }); }
@@ -1486,8 +1473,7 @@ window.skipQuickPayment = function() {
 document.getElementById("addExamForm")?.addEventListener("submit", function(e) { e.preventDefault(); exams.push({ id: Date.now().toString(), group: document.getElementById("examGroupSelect").value, name: document.getElementById("examName").value, maxScore: document.getElementById("examMaxScore").value, date: document.getElementById("examDate").value, status: "open", grades: {} }); localStorage.setItem("exams", JSON.stringify(exams)); this.reset(); closeModal('addExamModal'); renderExamCards(); showToast("تم الإنشاء"); });
 function deleteExam(id) { customConfirm("حذف الامتحان؟", () => { exams = exams.filter(e => e.id !== id); localStorage.setItem("exams", JSON.stringify(exams)); renderExamCards(); }); }
 function openExamDetails(id) { currentActiveExamId = id; const e = exams.find(e => e.id === id); document.getElementById("exams-overview").style.display = "none"; document.getElementById("exam-details-view").style.display = "block"; document.getElementById("current-exam-title").innerText = e.name; renderGradesTable(e, "grades-list", saveExamGrade, currentActiveExamId, 'exam'); }
-function backToExams() { document.getElementById("exams-overview").style.display = "block"; document.getElementById("exam-details-view").style.display = "none"; renderExamCards(); }
-
+window.backToExams = function() { document.getElementById("exams-overview").style.display = "block"; document.getElementById("exam-details-view").style.display = "none"; renderExamCards(); }
 
 
 // ==========================================
@@ -1542,8 +1528,7 @@ document.getElementById('editHwForm')?.addEventListener('submit', function(e) {
 document.getElementById("addHwForm")?.addEventListener("submit", function(e) { e.preventDefault(); homeworks.push({ id: Date.now().toString(), group: document.getElementById("hwGroupSelect").value, name: document.getElementById("hwName").value, maxScore: document.getElementById("hwMaxScore").value, date: document.getElementById("hwDate").value, status: "open", grades: {} }); localStorage.setItem("homeworks", JSON.stringify(homeworks)); this.reset(); closeModal('addHwModal'); renderHwCards(); });
 function deleteHw(id) { customConfirm("حذف الواجب؟", () => { homeworks = homeworks.filter(h => h.id !== id); localStorage.setItem("homeworks", JSON.stringify(homeworks)); renderHwCards(); }); }
 function openHwDetails(id) { currentActiveHwId = id; const hw = homeworks.find(h => h.id === id); document.getElementById("hw-overview").style.display = "none"; document.getElementById("hw-details-view").style.display = "block"; document.getElementById("current-hw-title").innerText = hw.name; renderGradesTable(hw, "hw-grades-list", saveHwGrade, currentActiveHwId, 'hw'); }
-function backToHw() { document.getElementById("hw-overview").style.display = "block"; document.getElementById("hw-details-view").style.display = "none"; renderHwCards(); }
-
+window.backToHw = function() { document.getElementById("hw-overview").style.display = "block"; document.getElementById("hw-details-view").style.display = "none"; renderHwCards(); }    
 
 
 function renderGradesTable(itemDetails, tbodyId, saveFunction, itemId, itemType) {
@@ -2798,7 +2783,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function updateParentLinkUI() {
     const linkInput = document.getElementById("parentPortalLink");
     if (linkInput) {
-        linkInput.value = "https://ma9248290-collab.github.io/historya-systtem/parent";
+        linkInput.value = "https://ma9248290-collab.github.io/mo_magdy_system/parent";
     }
 }
 
@@ -4823,10 +4808,6 @@ window.backToPlatformExams = function() {
     if(typeof renderOnlineExams === 'function') renderOnlineExams();
 };
 
-// دعم إضافي لو الزرار القديم لسه موجود في الـ HTML
-window.backToExams = function() {
-    window.backToPlatformExams();
-};
 
 
 // ==========================================
@@ -5527,10 +5508,13 @@ window.downloadReportExcel = function(type) {
 
 window.renderGradesTable = function(itemDetails, tbodyId, saveFunction, itemId, itemType) {
     const tbody = document.getElementById(tbodyId); const gStudents = students.filter(s => s.group === itemDetails.group);
-    if(gStudents.length === 0) return tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">لا يوجد طلاب</td></tr>`; tbody.innerHTML = ""; 
+    if(gStudents.length === 0) return tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">لا يوجد طلاب</td></tr>`; 
+    
     let prevItem = null;
     if(itemType === 'exam') { const grpItems = exams.filter(e => e.group === itemDetails.group).sort((a,b)=>new Date(a.date)-new Date(b.date)); prevItem = grpItems[grpItems.findIndex(e=>e.id===itemDetails.id)-1]; }
     if(itemType === 'hw') { const grpItems = homeworks.filter(h => h.group === itemDetails.group).sort((a,b)=>new Date(a.date)-new Date(b.date)); prevItem = grpItems[grpItems.findIndex(h=>h.id===itemDetails.id)-1]; }
+
+    let htmlContent = ""; // 👈 المتغير المنقذ للتهنيج
 
     gStudents.forEach(st => {
         let grade = itemDetails.grades[st.code] !== undefined ? itemDetails.grades[st.code] : (itemDetails.grades[st.phone] !== undefined ? itemDetails.grades[st.phone] : '');
@@ -5540,8 +5524,10 @@ window.renderGradesTable = function(itemDetails, tbodyId, saveFunction, itemId, 
             let pG = prevItem.grades[st.code] !== undefined ? prevItem.grades[st.code] : prevItem.grades[st.phone];
             pHT = `<strong style="color:${btnColor}">${pG} / ${prevItem.maxScore}</strong>`;
         }
-        tbody.innerHTML += `<tr><td><strong>${st.code}</strong></td><td>${st.name}</td><td>${st.phone}</td><td style="direction:ltr;">${pHT}</td><td style="direction: ltr;"><span style="color:var(--text-muted);">/ ${itemDetails.maxScore}</span><input type="number" id="grade_${st.code}" class="custom-input" style="width:70px; padding:5px; text-align:center;" value="${grade}" max="${itemDetails.maxScore}"></td><td><button class="btn-present" onclick="${saveFunction.name}('${st.code}')" style="background-color: ${btnColor}; color: #fff;">حفظ</button></td></tr>`;
+        htmlContent += `<tr><td><strong>${st.code}</strong></td><td>${st.name}</td><td>${st.phone}</td><td style="direction:ltr;">${pHT}</td><td style="direction: ltr;"><span style="color:var(--text-muted);">/ ${itemDetails.maxScore}</span><input type="number" id="grade_${st.code}" class="custom-input" style="width:70px; padding:5px; text-align:center;" value="${grade}" max="${itemDetails.maxScore}"></td><td><button class="btn-present" onclick="${saveFunction.name}('${st.code}')" style="background-color: ${btnColor}; color: #fff;">حفظ</button></td></tr>`;
     });
+    
+    tbody.innerHTML = htmlContent; // 👈 التحديث مرة واحدة
 }
 
 
@@ -5661,14 +5647,17 @@ window.openStudentProfile = function(code) {
 function renderTable() { 
     const tbody = document.getElementById("students-list"); 
     if(!tbody) return;
-    tbody.innerHTML = ""; 
+    
+    let htmlContent = ""; // 👈 المتغير المنقذ للتهنيج
+    
     students.forEach((student) => { 
         let trackBadge = student.level.includes('ثانوي') || student.level.includes('بكالوريا') ? `<br><span style="font-size: 11px; color: var(--text-muted); font-weight: bold;">مسار: ${student.track || 'عام'}</span>` : '';
-        // 💡 إضافة النجمة هنا
         let specialBadge = student.isSpecialCase ? `<span style="cursor: help; margin-right: 5px; font-size: 14px;" title="حالة خاصة: ${student.specialAmount > 0 ? 'يدفع ' + student.specialAmount + ' ج.م' : 'إعفاء تام'}">⭐</span>` : '';
         
-        tbody.innerHTML += `<tr><td><strong style="color:var(--primary-color);">${student.code}</strong></td><td>${student.name} ${specialBadge}</td><td>${student.level} ${trackBadge}</td><td>${student.group}</td><td><button class="profile-btn" onclick="openStudentProfile('${student.code}')">👤 الملف</button></td></tr>`; 
+        htmlContent += `<tr><td><strong style="color:var(--primary-color);">${student.code}</strong></td><td>${student.name} ${specialBadge}</td><td>${student.level} ${trackBadge}</td><td>${student.group}</td><td><button class="profile-btn" onclick="openStudentProfile('${student.code}')">👤 الملف</button></td></tr>`; 
     });
+    
+    tbody.innerHTML = htmlContent; // 👈 تحديث الشاشة مرة واحدة فقط
     document.getElementById("total-students").innerText = students.length; 
 }
 
@@ -5816,10 +5805,13 @@ window.markAttendance = function(codeOrPhone, status) {
 };
 window.renderAttendanceTable = function(session) { 
     const tbody = document.getElementById("attendance-list"); const gStudents = students.filter(s => s.group === session.group); 
-    if(gStudents.length===0) return tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;">لا يوجد طلاب</td></tr>`; tbody.innerHTML = ""; 
+    if(gStudents.length===0) return tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;">لا يوجد طلاب</td></tr>`; 
+    
     const groupS = classSessions.filter(s => s.group === session.group).sort((a,b)=>new Date(a.date)-new Date(b.date)); 
     const prevSession = groupS[groupS.findIndex(s => s.id === session.id) - 1]; 
     
+    let htmlContent = ""; // 👈 المتغير المنقذ للتهنيج
+
     gStudents.forEach(st => { 
         const stat = session.attendance[st.code] || session.attendance[st.phone]; 
         const statHtml = stat === 'present' ? '<span style="color:#10b981; font-weight:bold;">حاضر ✓</span>' : stat === 'late' ? '<span style="color:#f59e0b; font-weight:bold;">متأخر ⏳</span>' : stat === 'absent' ? '<span style="color:#ef4444; font-weight:bold;">غائب ❌</span>' : '<span style="color:#64748b;">لم يسجل</span>'; 
@@ -5829,21 +5821,18 @@ window.renderAttendanceTable = function(session) {
             const p = prevSession.attendance[st.code] || prevSession.attendance[st.phone]; 
             pHT = p==='present'?'<span style="color:#10b981; font-weight:bold;">حاضر</span>':p==='late'?'<span style="color:#f59e0b; font-weight:bold;">متأخر</span>':p==='absent'?'<span style="color:#ef4444; font-weight:bold;">غائب</span>':'--'; 
             
-            // 💻 الاكتشاف التلقائي للمنصة (بدون تدخل المدرس)
             if (window.platformLectures && window.platformTracking) {
                 let linkedLecture = window.platformLectures.find(l => l.linkedSession === prevSession.id || (l.linkedSessions && l.linkedSessions.includes(prevSession.id)));
                 if (linkedLecture) {
                     let trackData = window.platformTracking[linkedLecture.id];
                     if (trackData && (trackData[st.phone] || trackData[st.code])) {
-                        // تصميم شيك جداً لكلمة حاضر منصة
                         pHT = '<span style="color:#2563eb; font-weight:900; background:rgba(37,99,235,0.1); padding:4px 10px; border-radius:8px; border: 1px solid rgba(37,99,235,0.2);">💻 حاضر منصة</span>';
                     }
                 }
             }
         } 
         
-        // ❌ تمت إزالة زرار المنصة اليدوي من هنا
-        tbody.innerHTML += `<tr>
+        htmlContent += `<tr>
             <td><strong>${st.code}</strong></td>
             <td>${st.name}</td>
             <td style="direction: ltr;">${st.phone}</td>
@@ -5856,6 +5845,8 @@ window.renderAttendanceTable = function(session) {
             </td>
         </tr>`; 
     }); 
+    
+    tbody.innerHTML = htmlContent; // 👈 التحديث مرة واحدة
 };
 
 
@@ -6181,7 +6172,7 @@ window.confirmApproveRequest = async function() {
         await fetch(`https://el-senior-system-default-rtdb.europe-west1.firebasedatabase.app/${localStorage.getItem("licenseKey")}/join_requests/${id}.json`, { method: 'DELETE' });
 
         // إرسال رسالة واتساب للطالب (ولو مش كاتب رقمه هيبعت لولي الأمر احتياطي)
-        let portalLink = `https://ma9248290-collab.github.io/historya-systtem/parent.html`;
+        let portalLink = `https://ma9248290-collab.github.io/mo_magdy_system/parent.html`;
         let waMsg = `🎉 *تمت الموافقة على طلب الانضمام*\nأهلاً بك في نظام ${localStorage.getItem("teacherName") || "السنتر"}.\n\n👤 *اسم الطالب:* ${newStudent.name}\n📚 *المجموعة:* ${newStudent.group}\n🔑 *كود الدخول الخاص بك:* ${newCode}\n\n🔗 *رابط منصة الطالب:* ${portalLink}`;
         
         if (typeof sendAutoWhatsApp === "function") {

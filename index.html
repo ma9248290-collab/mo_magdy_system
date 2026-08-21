@@ -1938,12 +1938,9 @@
                 <label>هاتف الطالب <span style="color:var(--text-muted); font-size: 11px;">(اكتب 0 إذا لم يوجد)</span></label>
                 <input type="text" id="editStudentPhone" required class="custom-input">
             </div>
-            <div class="input-group">
+          <div class="input-group">
     <label>هاتف ولي الأمر</label>
-    <!-- ضفنا onkeyup عشان يفحص الرقم وإنت بتكتب -->
-    <input type="text" id="parentPhone" required class="custom-input" placeholder="01XXXXXXXXX" onkeyup="checkDuplicateParentPhone()">
-    <!-- رسالة التنبيه المخفية -->
-    <p id="parentPhoneWarning" style="color: var(--danger-color); font-size: 12px; font-weight: bold; margin-top: 5px; display: none;"></p>
+    <input type="text" id="editParentPhone" required class="custom-input">
 </div>
 
             <!-- حقل الحالة الخاصة (الإعفاء) -->
