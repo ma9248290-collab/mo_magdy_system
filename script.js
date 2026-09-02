@@ -6898,3 +6898,132 @@ window.exportGroupStudentsToExcel = function() {
     XLSX.writeFile(wb, `طلاب_مجموعة_${currentActiveGroup}_${dateStr}.xlsx`);
     showToast(`تم تصدير شيت مجموعة (${currentActiveGroup}) بنجاح! 📥`);
 };
+
+
+// تعيين الشهر الحالي أوتوماتيك أول ما الصفحة تفتح
+document.addEventListener('DOMContentLoaded', () => {
+    const monthInput = document.getElementById('financeMonthSelect');
+    if (monthInput) {
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        let mm = now.getMonth() + 1;
+        if (mm < 10) mm = '0' + mm;
+        monthInput.value = `${yyyy}-${mm}`; // بيطلع شكل زي 2026-08
+    }
+});
+
+// الدالة الرئيسية لرسم كشف حساب المجموعة للشهر المحدد
+window.renderSimplifiedFinance = function() {
+    const groupName = document.getElementById("financeGroupSelect").value;
+    const monthStr = document.getElementById("financeMonthSelect").value; // مثال: 2026-08
+    const tbody = document.getElementById("simple-finance-list");
+
+    if (!groupName || !monthStr) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 30px; font-weight: bold; color: var(--text-muted);">يرجى اختيار المجموعة والشهر</td></tr>`;
+        document.getElementById("simple-total-income").innerText = "0 ج.م";
+        document.getElementById("simple-unpaid-count").innerText = "متأخرات: 0 طلاب";
+        return;
+    }
+
+    // جلب سعر المجموعة الأساسي من الإعدادات
+    const groupObj = groups.find(g => g.name === groupName) || {};
+    const defaultPrice = groupObj.price || 0;
+    
+    // جلب طلاب المجموعة فقط
+    const groupStudents = students.filter(s => s.group === groupName);
+
+    if (groupStudents.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 30px; font-weight: bold; color: var(--text-muted);">لا يوجد طلاب في هذه المجموعة</td></tr>`;
+        document.getElementById("simple-total-income").innerText = "0 ج.م";
+        document.getElementById("simple-unpaid-count").innerText = "متأخرات: 0 طلاب";
+        return;
+    }
+
+    tbody.innerHTML = "";
+    let totalIncome = 0;
+    let unpaidCount = 0;
+
+    // التأكد من وجود أوبجيكت الدفع الشهري
+    if (!window.monthlyPayments) window.monthlyPayments = {};
+
+    groupStudents.forEach(student => {
+        // حساب السعر (لو حالة خاصة بياخد السعر المخصص ليه، لو لأ بياخد سعر المجموعة)
+        let actualPrice = student.isSpecialCase ? (student.specialAmount || 0) : defaultPrice;
+        
+        // التحقق هل الطالب ده دفع في الشهر ده ولا لأ
+        let isPaid = window.monthlyPayments[student.code] && window.monthlyPayments[student.code][monthStr] === true;
+
+        if (isPaid) {
+            totalIncome += actualPrice;
+        } else {
+            unpaidCount++;
+        }
+
+        // تصميم حالة الدفع
+        let statusBadge = isPaid 
+            ? `<span style="background: rgba(16, 185, 129, 0.1); color: var(--success-color); padding: 5px 12px; border-radius: 8px; font-weight: bold;">✅ تم الدفع</span>` 
+            : `<span style="background: rgba(239, 68, 68, 0.1); color: var(--danger-color); padding: 5px 12px; border-radius: 8px; font-weight: bold;">🔴 لم يدفع</span>`;
+
+        // تصميم الزراير (لو دفع يظهرله زرار إلغاء، لو مدفعش يظهرله زرار دفع)
+        let actionBtn = isPaid
+            ? `<button class="icon-btn danger" style="padding: 6px 15px; width: auto; margin: 0;" onclick="simpleCancelMonth('${student.code}', '${monthStr}')">إلغاء الدفع ❌</button>`
+            : `<button class="save-btn" style="margin: 0; background: var(--success-color); padding: 6px 15px; width: auto;" onclick="simplePayMonth('${student.code}', '${monthStr}', ${actualPrice})">تسديد (${actualPrice} ج) ✅</button>`;
+
+        // لون خلفية الصف
+        let rowBg = isPaid ? 'background: rgba(16, 185, 129, 0.03);' : 'background: rgba(239, 68, 68, 0.03);';
+
+        tbody.innerHTML += `
+            <tr style="${rowBg}">
+                <td><strong style="color: var(--primary-color);">${student.code}</strong></td>
+                <td style="font-weight: bold;">${student.name} ${student.isSpecialCase ? '⭐' : ''}</td>
+                <td><strong style="color: var(--text-main);">${actualPrice} ج.م</strong></td>
+                <td>${statusBadge}</td>
+                <td>${actionBtn}</td>
+            </tr>
+        `;
+    });
+
+    // تحديث الإحصائية فوق
+    document.getElementById("simple-total-income").innerText = `${totalIncome} ج.م`;
+    document.getElementById("simple-unpaid-count").innerText = `لم يسدد: ${unpaidCount} طلاب`;
+};
+
+// دالة الدفع السريع
+window.simplePayMonth = function(studentCode, monthStr, amount) {
+    if(!window.monthlyPayments[studentCode]) window.monthlyPayments[studentCode] = {};
+    
+    window.monthlyPayments[studentCode][monthStr] = true; // تسجيل الدفع
+    
+    // حفظ في الذاكرة
+    localStorage.setItem("monthlyPayments", JSON.stringify(window.monthlyPayments));
+    
+    // تسجيل في اللوج (اختياري)
+    if(typeof addSystemLog === "function") addSystemLog("استلام نقدية 💰", `تم تحصيل ${amount} ج.م من الطالب (${studentCode}) لاشتراك شهر ${monthStr}`);
+
+    showToast(`تم تسجيل الدفع بنجاح! ✅`);
+    renderSimplifiedFinance(); // تحديث الجدول عشان الزرار يتغير
+};
+
+// دالة إلغاء الدفع
+window.simpleCancelMonth = function(studentCode, monthStr) {
+    if(!confirm("هل أنت متأكد من إلغاء الدفع لهذا الشهر؟")) return;
+    
+    if(window.monthlyPayments[studentCode]) {
+        delete window.monthlyPayments[studentCode][monthStr];
+        localStorage.setItem("monthlyPayments", JSON.stringify(window.monthlyPayments));
+    }
+    
+    showToast(`تم إلغاء الدفع ❌`, "error");
+    renderSimplifiedFinance(); // تحديث الجدول
+};
+
+// تحديث بسيط لدالة الانتقال عشان لما تفتح صفحة الماليات يعبي قائمة المراحل
+const checkFinanceSwitch = window.switchPage;
+window.switchPage = function(pageId) {
+    if (checkFinanceSwitch) checkFinanceSwitch(pageId);
+    if (pageId === "finance") {
+        if(typeof populateLevelDropdowns === "function") populateLevelDropdowns();
+        document.getElementById("simple-finance-list").innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 30px; font-weight: bold; color: var(--text-muted);">يرجى اختيار المجموعة والشهر لعرض الكشف</td></tr>`;
+        document.getElementById("simple-total-income").innerText = "0 ج.م";
+    }
+};
