@@ -4833,12 +4833,31 @@ window.renderOnlineExams = async function() {
 
         container.innerHTML = "";
         [...window.fetchedOnlineExams].reverse().forEach((exam) => {
-            let statusColor = exam.status === 'open' ? 'var(--success-color)' : 'var(--danger-color)';
-            let statusText = exam.status === 'open' ? 'متاح للطلاب ✅' : 'مغلق ❌';
+            let statusColor = exam.status === 'open' ? '#10b981' : '#ef4444';
+            let statusText = exam.status === 'open' ? 'متاح للطلاب ✅' : 'مغلق 🔒';
             let originalIndex = window.fetchedOnlineExams.findIndex(e => e.id === exam.id);
             let groupsText = Array.isArray(exam.group) ? exam.group.join('، ') : (exam.group === 'all' ? 'الكل' : exam.group);
 
-            container.innerHTML += `<div class="card" style="padding:20px; border-top: 4px solid ${statusColor}; display: flex; flex-direction: column;"><h3 style="margin:0 0 10px 0; color:var(--secondary-color);">${exam.title}</h3><div style="font-size:14px; color:var(--text-muted); margin-bottom:15px; display:flex; flex-direction:column; gap:5px; font-weight:bold;"><span>🎯 المجموع: ${exam.totalScore} درجة</span><span>⏱️ المدة: ${exam.duration} دقيقة</span><span>👥 المجموعات: ${groupsText}</span><span style="color:${statusColor};">${statusText}</span></div><div style="display:flex; gap:10px; margin-top: auto;"><button class="save-btn" style="flex: 1; background: #3b82f6; margin: 0; font-size: 15px;" onclick="openOnlineExamDetails('${exam.id}')">عرض الدرجات 📊</button><button onclick="openEditOnlineExam('${exam.id}')" style="background:#f59e0b; color:white; border:none; border-radius:8px; padding:0 15px; cursor:pointer; font-size: 18px;" title="تعديل الامتحان">✏️</button><button onclick="toggleExamStatus(${originalIndex}, '${exam.status}')" style="background:${exam.status === 'open' ? '#f59e0b' : '#10b981'}; color:white; border:none; border-radius:8px; padding:0 15px; cursor:pointer; font-size: 18px;" title="فتح/قفل الامتحان">${exam.status === 'open' ? '🛑' : '🟢'}</button><button onclick="deleteOnlineExam(${originalIndex})" style="background:#ef4444; color:white; border:none; border-radius:8px; padding:0 15px; cursor:pointer; font-size: 18px;" title="حذف نهائي">🗑️</button></div></div>`;
+            container.innerHTML += `
+            <div class="card" style="padding:20px; display: flex; flex-direction: column; background: var(--card-bg); border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid var(--border-color); border-top: 4px solid ${statusColor};">
+                <h3 style="margin:0 0 10px 0; color:var(--secondary-color); font-size: 18px;">${exam.title}</h3>
+                <div style="font-size:13px; color:var(--text-muted); margin-bottom:15px; display:flex; flex-direction:column; gap:8px; font-weight:bold; background: var(--bg-color); padding: 10px; border-radius: 8px;">
+                    <span style="display: flex; justify-content: space-between;"><span>🎯 المجموع:</span> <span>${exam.totalScore} درجة</span></span>
+                    <span style="display: flex; justify-content: space-between;"><span>⏱️ المدة:</span> <span>${exam.duration} دقيقة</span></span>
+                    <span style="display: flex; justify-content: space-between;"><span>👥 المستهدف:</span> <span>${groupsText}</span></span>
+                    <span style="display: flex; justify-content: space-between; color:${statusColor}; border-top: 1px dashed var(--border-color); padding-top: 8px; margin-top: 2px;"><span>الحالة:</span> <span>${statusText}</span></span>
+                </div>
+                
+                <div style="display: flex; gap: 8px; margin-top: auto; flex-wrap: wrap;">
+                    <button onclick="openOnlineExamDetails('${exam.id}')" style="flex: 1; min-width: 45%; background: #3b82f6; color: white; border: none; border-radius: 6px; padding: 8px; cursor: pointer; font-weight: bold; font-family: 'Cairo', sans-serif;">الدرجات 📊</button>
+                    
+                    <button onclick="openEditOnlineExam('${exam.id}')" style="flex: 1; min-width: 45%; background: #f59e0b; color: white; border: none; border-radius: 6px; padding: 8px; cursor: pointer; font-weight: bold; font-family: 'Cairo', sans-serif;">تعديل ✏️</button>
+                    
+                    <button onclick="toggleExamStatus(${originalIndex}, '${exam.status}')" style="flex: 1; min-width: 45%; background: ${exam.status === 'open' ? '#64748b' : '#10b981'}; color: white; border: none; border-radius: 6px; padding: 8px; cursor: pointer; font-weight: bold; font-family: 'Cairo', sans-serif;">${exam.status === 'open' ? 'إغلاق 🔒' : 'إتاحة 🔓'}</button>
+                    
+                    <button onclick="deleteOnlineExam(${originalIndex})" style="flex: 1; min-width: 45%; background: #ef4444; color: white; border: none; border-radius: 6px; padding: 8px; cursor: pointer; font-weight: bold; font-family: 'Cairo', sans-serif;">حذف 🗑️</button>
+                </div>
+            </div>`;
         });
     } catch(e) { container.innerHTML = `<div style="grid-column: 1/-1; color:red; text-align:center;">حدث خطأ في جلب الامتحانات</div>`; }
 };
