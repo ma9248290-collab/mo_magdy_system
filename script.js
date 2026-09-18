@@ -13,7 +13,7 @@ let isAssistantMode = localStorage.getItem("isAssistantMode") === "true";
 let adminPin = localStorage.getItem("adminPin") || "1234";
 let books = JSON.parse(localStorage.getItem("books")) || [];
 window.editingOnlineExamId = null;
-
+window.onlineExams = JSON.parse(localStorage.getItem("onlineExams")) || [];
 // تحديث المجموعات
 let groups = JSON.parse(localStorage.getItem("groups")) || [];
 if (groups.length > 0 && typeof groups[0] === 'string') {
@@ -4210,44 +4210,6 @@ window.saveEditedCourse = async function() {
     btn.innerText = originalText;
 };
 
-// --- فتح نافذة التعديل (محدث ليدعم حصص متعددة) ---
-window.openEditCourseModal = function(id) {
-    let lec = window.fetchedLectures.find(l => l.id === id);
-    if(!lec) return;
-
-    document.getElementById("editLecId").value = lec.id;
-    document.getElementById("editLecTitle").value = lec.title;
-    document.getElementById("editLecType").value = lec.type;
-    document.getElementById("editLecPrice").value = lec.price || 0;
-    document.getElementById("editPriceContainer").style.display = lec.type === 'paid' ? 'block' : 'none';
-    document.getElementById("editLecDesc").value = lec.desc || "";
-    document.getElementById("editLecMaxViews").value = lec.maxViews || 0;
-    document.getElementById("editLecImageBase64").value = lec.image || "";
-    document.getElementById("editLecImageFile").value = ""; 
-
-    let selectLevel = document.getElementById("editLecLevel");
-    let activeLevels = JSON.parse(localStorage.getItem("activeLevels")) || ["الصف الأول الثانوي", "الصف الثاني الثانوي", "الصف الثالث الثانوي"];
-    selectLevel.innerHTML = '<option value="all">كل الصفوف (عام)</option>';
-    activeLevels.forEach(lvl => { selectLevel.innerHTML += `<option value="${lvl}" ${lec.level === lvl ? 'selected' : ''}>${lvl}</option>`; });
-
-    // 👈 تجهيز الحصص المربوطة القديمة وفتح الفلتر
-    let savedSessions = lec.linkedSessions || [];
-    if(lec.linkedSession && !savedSessions.includes(lec.linkedSession)) savedSessions.push(lec.linkedSession); // دعم للكورسات القديمة اللي كانت متسجلة بحصة واحدة
-    
-    filterCourseSessions('editLecLevel', 'editLecSessionsContainer', savedSessions);
-
-    let vContainer = document.getElementById("editCourseVideosContainer");
-    vContainer.innerHTML = "";
-    if(lec.videos && lec.videos.length > 0) {
-        lec.videos.forEach(v => addEditCourseVideoRow(v.title, v.url, v.linkedSession, v.requiredExam, v.type, v.price));
-    } else if (lec.url) {
-        addEditCourseVideoRow("المحاضرة كاملة", lec.url); 
-    } else {
-        addEditCourseVideoRow();
-    }
-
-    openModal("editCourseModal");
-};
 
 
 
@@ -4332,7 +4294,7 @@ window.openEditCourseModal = function(id) {
     vContainer.innerHTML = "";
     
     if(lec.videos && lec.videos.length > 0) {
-        lec.videos.forEach(v => addEditCourseVideoRow(v.title, v.url, v.linkedSession, v.requiredExam, v.type, v.price));
+        lec.videos.forEach(v => addEditCourseVideoRow(v.title, v.url, v.linkedSessions || v.linkedSession, v.requiredExam, v.type, v.price));
     } else {
         addEditCourseVideoRow();
     }
@@ -4767,26 +4729,20 @@ window.saveOnlineExam = async function() {
     btn.disabled = true;
 
     try {
-        let res = await fetch(`https://el-senior-system-default-rtdb.europe-west1.firebasedatabase.app/${getSafeUid()}/data/onlineExams.json`);
-        let existingExams = await res.json() || [];
-        if(!Array.isArray(existingExams)) existingExams = Object.values(existingExams).filter(e => e !== null);
-
+        // العمل على الذاكرة المحلية مباشرة لمنع تعارض المزامنة
         if (window.editingOnlineExamId) {
-            // حالة التعديل
-            let examIndex = existingExams.findIndex(e => e.id === window.editingOnlineExamId);
+            let examIndex = window.onlineExams.findIndex(e => e.id === window.editingOnlineExamId);
             if (examIndex > -1) {
-                existingExams[examIndex].title = title;
-                existingExams[examIndex].duration = parseInt(duration);
-                existingExams[examIndex].group = selectedGroups;
-                existingExams[examIndex].autoShowResult = autoResult;
-                existingExams[examIndex].totalScore = totalScore;
-                existingExams[examIndex].track = track;
-                existingExams[examIndex].questions = currentQuestions;
-                // نحتفظ بـ id و status و date كما هي
+                window.onlineExams[examIndex].title = title;
+                window.onlineExams[examIndex].duration = parseInt(duration);
+                window.onlineExams[examIndex].group = selectedGroups;
+                window.onlineExams[examIndex].autoShowResult = autoResult;
+                window.onlineExams[examIndex].totalScore = totalScore;
+                window.onlineExams[examIndex].track = track;
+                window.onlineExams[examIndex].questions = currentQuestions;
             }
             if(typeof showToast === 'function') showToast("تم حفظ التعديلات بنجاح! ✏️");
         } else {
-            // حالة إنشاء امتحان جديد
             let newExam = { 
                 id: "exam_" + Date.now(), 
                 title: title, 
@@ -4799,24 +4755,21 @@ window.saveOnlineExam = async function() {
                 date: new Date().toISOString().split('T')[0], 
                 questions: currentQuestions 
             };
-            existingExams.push(newExam);
+            window.onlineExams.push(newExam);
             if(typeof showToast === 'function') showToast("تم نشر الامتحان للطلاب بنجاح! 🚀");
         }
 
-        await fetch(`https://el-senior-system-default-rtdb.europe-west1.firebasedatabase.app/${getSafeUid()}/data/onlineExams.json`, { 
-            method: 'PUT', 
-            headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify(existingExams) 
-        });
+        // الحفظ في المتصفح سيقوم تلقائياً بتشغيل دالة syncDataToBot لرفعه للسيرفر
+        localStorage.setItem("onlineExams", JSON.stringify(window.onlineExams));
 
         closeModal('buildOnlineExamModal'); 
-        renderOnlineExams();
+        if(typeof renderOnlineExams === 'function') renderOnlineExams();
     } catch(e) { 
         alert("حدث خطأ أثناء حفظ الامتحان."); 
     } finally {
         btn.innerHTML = origText;
         btn.disabled = false;
-        window.editingOnlineExamId = null; // تصفير وضع التعديل
+        window.editingOnlineExamId = null;
     }
 };
 
