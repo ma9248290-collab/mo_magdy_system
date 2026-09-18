@@ -4713,7 +4713,10 @@ window.saveOnlineExam = async function() {
     let duration = document.getElementById("onlineExamDuration").value;
     let autoResult = document.getElementById("onlineExamAutoShowResult").checked;
     let track = document.getElementById("onlineExamTrack") ? document.getElementById("onlineExamTrack").value : "all";
-    let selectedGroups = []; document.querySelectorAll('input[name="examGroup"]:checked').forEach(cb => selectedGroups.push(cb.value));
+    
+    // سحب المجموعات المختارة
+    let selectedGroups = []; 
+    document.querySelectorAll('input[name="examGroup"]:checked').forEach(cb => selectedGroups.push(cb.value));
 
     if(!title || !duration || currentQuestions.length === 0 || selectedGroups.length === 0) {
         if(typeof showToast === 'function') showToast("⚠️ يرجى إكمال بيانات الامتحان واختيار مجموعة وإضافة أسئلة!", "error");
@@ -4721,16 +4724,22 @@ window.saveOnlineExam = async function() {
         return;
     }
 
-    let totalScore = currentQuestions.reduce((sum, q) => sum + (q.points || 0), 0);
+    let totalScore = currentQuestions.reduce((sum, q) => sum + (parseFloat(q.points) || 0), 0);
     
     let btn = document.querySelector("#buildOnlineExamModal .save-btn");
     let origText = btn.innerHTML;
-    btn.innerHTML = "جاري الحفظ... ⏳";
+    btn.innerHTML = "جاري الحفظ والرفع... ⏳";
     btn.disabled = true;
 
     try {
-        // العمل على الذاكرة المحلية مباشرة لمنع تعارض المزامنة
+        // التأكد من أن المصفوفة موجودة ونظيفة
+        window.onlineExams = JSON.parse(localStorage.getItem("onlineExams")) || [];
+        if (!Array.isArray(window.onlineExams)) {
+            window.onlineExams = Object.values(window.onlineExams).filter(e => e !== null);
+        }
+
         if (window.editingOnlineExamId) {
+            // حالة التعديل للامتحان موجود
             let examIndex = window.onlineExams.findIndex(e => e.id === window.editingOnlineExamId);
             if (examIndex > -1) {
                 window.onlineExams[examIndex].title = title;
@@ -4743,6 +4752,7 @@ window.saveOnlineExam = async function() {
             }
             if(typeof showToast === 'function') showToast("تم حفظ التعديلات بنجاح! ✏️");
         } else {
+            // حالة إنشاء امتحان جديد
             let newExam = { 
                 id: "exam_" + Date.now(), 
                 title: title, 
@@ -4759,13 +4769,25 @@ window.saveOnlineExam = async function() {
             if(typeof showToast === 'function') showToast("تم نشر الامتحان للطلاب بنجاح! 🚀");
         }
 
-        // الحفظ في المتصفح سيقوم تلقائياً بتشغيل دالة syncDataToBot لرفعه للسيرفر
+        // 1. الحفظ في المتصفح
         localStorage.setItem("onlineExams", JSON.stringify(window.onlineExams));
+
+        // 2. الرفع المباشر والإجباري للفايربيز (هذا هو الحل الجذري لمنع الاختفاء)
+        await fetch(`https://el-senior-system-default-rtdb.europe-west1.firebasedatabase.app/${getSafeUid()}/data/onlineExams.json`, { 
+            method: 'PUT', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify(window.onlineExams) 
+        });
+
+        // 3. تحديث المزامنة الكلية لتأكيد التغييرات
+        if(typeof syncDataToBot === 'function') syncDataToBot();
 
         closeModal('buildOnlineExamModal'); 
         if(typeof renderOnlineExams === 'function') renderOnlineExams();
+        
     } catch(e) { 
-        alert("حدث خطأ أثناء حفظ الامتحان."); 
+        alert("حدث خطأ أثناء حفظ الامتحان وتأكد من اتصالك بالإنترنت."); 
+        console.error("Save Exam Error: ", e);
     } finally {
         btn.innerHTML = origText;
         btn.disabled = false;
@@ -5134,10 +5156,25 @@ window.toggleExamStatus = async function(index, currentStatus) {
 window.deleteOnlineExam = async function(index) {
     if(!confirm("⚠️ تأكيد الحذف النهائي؟")) return;
     try {
-        let exams = [...window.fetchedOnlineExams]; exams.splice(index, 1);
-        await fetch(`https://el-senior-system-default-rtdb.europe-west1.firebasedatabase.app/${getSafeUid()}/data/onlineExams.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(exams) });
+        let exams = [...window.fetchedOnlineExams]; 
+        exams.splice(index, 1);
+        window.onlineExams = exams; // تحديث المتغير الأساسي
+        
+        // حفظ في المتصفح أولاً
+        localStorage.setItem("onlineExams", JSON.stringify(window.onlineExams));
+
+        // رفع التعديل للفايربيز
+        await fetch(`https://el-senior-system-default-rtdb.europe-west1.firebasedatabase.app/${getSafeUid()}/data/onlineExams.json`, { 
+            method: 'PUT', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify(window.onlineExams) 
+        });
+
         renderOnlineExams();
-    } catch(e) {}
+        showToast("تم الحذف بنجاح! 🗑️");
+    } catch(e) {
+        showToast("حدث خطأ أثناء الحذف!", "error");
+    }
 };
 
 
