@@ -4675,8 +4675,32 @@ window.openOnlineExamBuilder = function() {
     openModal('buildOnlineExamModal');
 };
 
+// دوال رفع وضغط الصور للامتحانات باستخدام الدالة الموجودة مسبقاً readFileAsBase64
+window.uploadQuestionImage = async function(index, inputEl) {
+    inputEl.id = "temp_q_img_" + Date.now(); 
+    let base64 = await window.readFileAsBase64(inputEl.id);
+    if(base64) { currentQuestions[index].image = base64; renderQuestionBlocks(); }
+};
+window.removeQuestionImage = function(index) { currentQuestions[index].image = ""; renderQuestionBlocks(); };
+
+window.uploadOptionImage = async function(qIndex, optIndex, inputEl) {
+    inputEl.id = `temp_opt_img_${Date.now()}`;
+    let base64 = await window.readFileAsBase64(inputEl.id);
+    if(base64) {
+        if(!currentQuestions[qIndex].optionsImages) currentQuestions[qIndex].optionsImages = ["", "", "", ""];
+        currentQuestions[qIndex].optionsImages[optIndex] = base64;
+        renderQuestionBlocks();
+    }
+};
+window.removeOptionImage = function(qIndex, optIndex) { currentQuestions[qIndex].optionsImages[optIndex] = ""; renderQuestionBlocks(); };
+
+
 window.addQuestionBlock = function(type = 'mcq') {
-    currentQuestions.push({ id: "q_" + Date.now(), type: type, text: "", points: 1, options: ["", "", "", ""], correctAnswerIndex: 0, correctAnswerText: "", correctAnswerTF: "true" });
+    currentQuestions.push({ 
+        id: "q_" + Date.now(), type: type, text: "", image: "", points: 1, 
+        options: ["", "", "", ""], optionsImages: ["", "", "", ""], 
+        correctAnswerIndex: 0, correctAnswerText: "", correctAnswerTF: "true" 
+    });
     renderQuestionBlocks();
     setTimeout(() => { let sa = document.getElementById('examBuilderScrollArea'); if(sa) sa.scrollTop = sa.scrollHeight; }, 100);
 };
@@ -4686,15 +4710,57 @@ window.renderQuestionBlocks = function() {
     if(!container) return;
     if(currentQuestions.length === 0) return container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px; border: 2px dashed var(--border-color); border-radius: 12px;">لم تقم بإضافة أي أسئلة بعد.</div>`;
     container.innerHTML = "";
+    
     currentQuestions.forEach((q, index) => {
-        let html = `<div class="question-block" style="background: var(--bg-color); padding: 20px; border: 1px solid var(--border-color); border-radius: 12px; position: relative; margin-bottom: 15px;"><button type="button" onclick="removeQuestion(${index})" style="position: absolute; top: 10px; left: 10px; background: #ef4444; color: #fff; border: none; border-radius: 6px; padding: 5px 10px; cursor: pointer;">حذف</button><div style="display: flex; gap: 15px; margin-bottom: 15px;"><div style="flex: 3;"><label style="color: var(--primary-color); font-weight: bold;">نص السؤال ${index + 1}:</label><textarea class="custom-input" rows="2" required oninput="updateQuestion(${index}, 'text', this.value)">${q.text}</textarea></div><div style="flex: 1;"><label style="color: var(--exam-color); font-weight: bold;">الدرجة:</label><input type="number" class="custom-input" value="${q.points}" min="1" required oninput="updateQuestion(${index}, 'points', parseFloat(this.value))"></div></div><div id="q_options_${index}">${generateOptionsHtml(q, index)}</div></div>`;
+        let imgPreview = q.image ? `<div style="position:relative; display:inline-block; margin-top:10px;"><img src="${q.image}" style="max-height: 80px; border-radius: 6px; border: 1px solid var(--border-color);"><button type="button" onclick="removeQuestionImage(${index})" style="position:absolute; top:-5px; right:-5px; background:red; color:white; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; font-size:10px; display:flex; justify-content:center; align-items:center;">✖</button></div>` : '';
+
+        let html = `
+        <div class="question-block" style="background: var(--bg-color); padding: 20px; border: 1px solid var(--border-color); border-radius: 12px; position: relative; margin-bottom: 15px;">
+            <button type="button" onclick="removeQuestion(${index})" style="position: absolute; top: 10px; left: 10px; background: #ef4444; color: #fff; border: none; border-radius: 6px; padding: 5px 10px; cursor: pointer;">حذف</button>
+            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+                <div style="flex: 3;">
+                    <label style="color: var(--primary-color); font-weight: bold; display:flex; justify-content:space-between; align-items:center;">
+                        <span>نص السؤال ${index + 1}:</span>
+                        <label style="cursor: pointer; background: rgba(59, 130, 246, 0.1); padding: 4px 10px; border-radius: 6px; color: var(--primary-color); font-size: 12px;">
+                            🖼️ إرفاق صورة للسؤال <input type="file" style="display:none;" accept="image/*" onchange="uploadQuestionImage(${index}, this)">
+                        </label>
+                    </label>
+                    <textarea class="custom-input" rows="2" required oninput="updateQuestion(${index}, 'text', this.value)">${q.text}</textarea>
+                    ${imgPreview}
+                </div>
+                <div style="flex: 1;">
+                    <label style="color: var(--exam-color); font-weight: bold;">الدرجة:</label>
+                    <input type="number" class="custom-input" value="${q.points}" min="1" required oninput="updateQuestion(${index}, 'points', parseFloat(this.value))">
+                </div>
+            </div>
+            <div id="q_options_${index}">${generateOptionsHtml(q, index)}</div>
+        </div>`;
         container.innerHTML += html;
     });
 };
 
 window.generateOptionsHtml = function(q, index) {
     if(q.type === 'mcq') {
-        return `<label style="font-weight:bold; font-size:14px; margin-bottom:5px; display:block;">الاختيارات (حدد الإجابة الصحيحة بالدائرة):</label><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">${q.options.map((opt, i) => `<div style="display:flex; gap:10px; align-items:center;"><input type="radio" name="correct_${index}" ${q.correctAnswerIndex === i ? 'checked' : ''} onchange="updateQuestion(${index}, 'correctAnswerIndex', ${i})" style="width:18px; height:18px; cursor:pointer;"><input type="text" class="custom-input" value="${opt}" placeholder="الاختيار ${i+1}" oninput="updateOption(${index}, ${i}, this.value)"></div>`).join('')}</div>`;
+        let optsHtml = `<label style="font-weight:bold; font-size:14px; margin-bottom:5px; display:block;">الاختيارات (حدد الإجابة الصحيحة بالدائرة):</label><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">`;
+        q.options.forEach((opt, i) => {
+            let optImgPrev = (q.optionsImages && q.optionsImages[i]) ? `<div style="position:relative; display:inline-block;"><img src="${q.optionsImages[i]}" style="height: 35px; border-radius: 4px; border: 1px solid #cbd5e1;"><button type="button" onclick="removeOptionImage(${index}, ${i})" style="position:absolute; top:-5px; right:-5px; background:red; color:white; border:none; border-radius:50%; width:15px; height:15px; font-size:8px; cursor:pointer;">✖</button></div>` : '';
+            
+            optsHtml += `
+            <div style="display:flex; gap:10px; align-items:flex-start; background: white; padding: 10px; border-radius: 8px; border: 1px dashed var(--border-color);">
+                <input type="radio" name="correct_${index}" ${q.correctAnswerIndex === i ? 'checked' : ''} onchange="updateQuestion(${index}, 'correctAnswerIndex', ${i})" style="width:18px; height:18px; cursor:pointer; margin-top:10px;">
+                <div style="flex:1; display:flex; flex-direction:column; gap:5px;">
+                    <input type="text" class="custom-input" style="margin:0;" value="${opt}" placeholder="الاختيار ${i+1}" oninput="updateOption(${index}, ${i}, this.value)">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <label style="cursor:pointer; font-size:11px; background:var(--hover-bg); padding:4px 8px; border-radius:4px; border:1px solid var(--border-color); color:var(--text-muted);">
+                            📷 صورة <input type="file" style="display:none;" accept="image/*" onchange="uploadOptionImage(${index}, ${i}, this)">
+                        </label>
+                        ${optImgPrev}
+                    </div>
+                </div>
+            </div>`;
+        });
+        optsHtml += `</div>`;
+        return optsHtml;
     } else if(q.type === 'tf') {
         return `<div style="display: flex; gap: 20px;"><label style="cursor:pointer; display:flex; align-items:center; gap:5px; font-weight:bold; color:var(--success-color);"><input type="radio" name="ans_${index}" ${q.correctAnswerTF === 'true' ? 'checked' : ''} onchange="updateQuestion(${index}, 'correctAnswerTF', 'true')" style="width:18px; height:18px;"> صح ✔️</label><label style="cursor:pointer; display:flex; align-items:center; gap:5px; font-weight:bold; color:var(--danger-color);"><input type="radio" name="ans_${index}" ${q.correctAnswerTF === 'false' ? 'checked' : ''} onchange="updateQuestion(${index}, 'correctAnswerTF', 'false')" style="width:18px; height:18px;"> خطأ ❌</label></div>`;
     } else if(q.type === 'blank') {
@@ -4703,6 +4769,8 @@ window.generateOptionsHtml = function(q, index) {
         return `<div style="background: rgba(139, 92, 246, 0.1); padding: 10px; border-radius: 8px; border: 1px dashed var(--exam-color); color: var(--exam-color); font-size: 14px; margin: 0;">📝 هذا السؤال مقالي يصحح يدوياً.</div>`;
     }
 };
+
+
 
 window.updateQuestion = function(index, field, value) { currentQuestions[index][field] = value; };
 window.updateOption = function(qIndex, optIndex, value) { currentQuestions[qIndex].options[optIndex] = value; };
@@ -5801,66 +5869,124 @@ window.switchPage = function(pageId) {
     }
 };
 
+// 🚀 دالة تسجيل الحضور المباشرة (سريعة جداً وتمنع تساقط الطلاب) 🚀
 window.markAttendance = function(codeOrPhone, status) {
     const s = classSessions.find(s => s.id === currentActiveSessionId);
     if(s && s.status === 'open') {
         const student = students.find(st => st.code === codeOrPhone || st.phone === codeOrPhone);
         if(!student) return;
         
-        // 🚨 التنبيه الذكي بالغياب أو حضور المنصة في الحصة السابقة
-        const groupS = classSessions.filter(session => session.group === s.group).sort((a,b)=>new Date(a.date)-new Date(b.date)); 
-        const currentIndex = groupS.findIndex(session => session.id === s.id);
-        if (currentIndex > 0) {
-            const prevSession = groupS[currentIndex - 1];
-            const pStat = prevSession.attendance[student.code] || prevSession.attendance[student.phone];
-            
-            let attendedOnline = false;
-            // فحص هل الطالب حضر على المنصة
-            if (window.platformLectures && window.platformTracking) {
-                let linkedLecture = window.platformLectures.find(l => l.linkedSession === prevSession.id || (l.linkedSessions && l.linkedSessions.includes(prevSession.id)));
-                if (linkedLecture && window.platformTracking[linkedLecture.id] && (window.platformTracking[linkedLecture.id][student.phone] || window.platformTracking[linkedLecture.id][student.code])) {
-                    attendedOnline = true;
-                }
-            }
-
-            // لو كان غايب ومحضرش منصة، نظهرله الإشعار البرتقالي الشيك
-            if (pStat === 'absent' && !attendedOnline) {
-                setTimeout(() => {
-                    showToast(`تنبيه: الطالب (${student.name}) كان غائباً الحصة السابقة!`, "warning");
-                }, 400); 
-            } 
-            // ✨ التعديل الجديد: لو حضر منصة نظهرله الإشعار الأزرق الفخم
-            else if (attendedOnline) {
-                setTimeout(() => {
-                    showToast(`ممتاز: الطالب (${student.name}) حضر الحصة السابقة أونلاين على المنصة!`, "info");
-                }, 400); 
-            }
-        }
-        // ----------------------------------------------------
-
         let oldStatus = s.attendance[student.code] || s.attendance[student.phone];
         if (oldStatus) {
             if (oldStatus === 'present') student.behaviorPoints = Math.max(0, (student.behaviorPoints || 0) - 5);
             if (oldStatus === 'late') student.behaviorPoints = Math.max(0, (student.behaviorPoints || 0) - 2);
+            if (typeof oldStatus === 'object' && oldStatus.status === 'platform_makeup') {
+                student.behaviorPoints = Math.max(0, (student.behaviorPoints || 0) - 5);
+            }
         }
+        
         if (status === 'present') student.behaviorPoints = (student.behaviorPoints || 0) + 5;
         if (status === 'late') student.behaviorPoints = (student.behaviorPoints || 0) + 2;
 
-        s.attendance[student.code] = status; // الحفظ بالكود دايماً
+        s.attendance[student.code] = status; 
+
+        // ⏱️ حفظ وقت الحضور
+        if (!s.arrivalTimes) s.arrivalTimes = {};
+        let now = new Date();
+        let h = now.getHours().toString().padStart(2, '0');
+        let m = now.getMinutes().toString().padStart(2, '0');
+        let arrivalStr = formatTime12(`${h}:${m}`);
+        s.arrivalTimes[student.code] = arrivalStr;
+
+        // 🛑 1. نوقف المزامنة الشاملة البطيئة عشان متعملش تداخل وتسقط طلاب
+        window.isIncomingSync = true; 
         localStorage.setItem("classSessions", JSON.stringify(classSessions));
         localStorage.setItem("students", JSON.stringify(students));
-        renderAttendanceTable(s);
+        window.isIncomingSync = false;
 
-        // 🚀 --- إرسال الإشعار اللحظي للتطبيق --- 🚀
+        // 🚀 2. التحديث الدقيق والمباشر للفايربيز في كسر من الثانية
+        let sIdx = classSessions.findIndex(session => session.id === currentActiveSessionId);
+        let stIdx = students.findIndex(st => st.code === student.code);
+        let uid = typeof window.getSafeUid === 'function' ? window.getSafeUid() : "ElSenior_System_Master";
+
+        if (sIdx > -1 && stIdx > -1) {
+            let updates = {};
+            updates[`data/classSessions/${sIdx}/attendance/${student.code}`] = status;
+            updates[`data/classSessions/${sIdx}/arrivalTimes/${student.code}`] = arrivalStr;
+            updates[`data/students/${stIdx}/behaviorPoints`] = student.behaviorPoints;
+
+            fetch(`https://el-senior-system-default-rtdb.europe-west1.firebasedatabase.app/${uid}.json`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates)
+            }).then(() => {
+                if(typeof triggerGlobalSyncSignal === 'function') triggerGlobalSyncSignal();
+            });
+        }
+
+        if (typeof renderAttendanceTable === 'function') renderAttendanceTable(s);
+
         let title = "تحديث حضور وانصراف 🏫";
         let msg = "";
         if(status === 'present') msg = `✅ وصل ${student.name} إلى السنتر لحضور حصة (${s.topic || 'اليوم'}).`;
         else if(status === 'late') msg = `⏳ تأخر ${student.name} عن موعد بداية حصة (${s.topic || 'اليوم'}).`;
-        else if(status === 'absent') msg = `❌ تنبيه: ${student.name} غائب عن حصة (${s.topic || 'اليوم'}).`;
         
         if(typeof notifyParentApp === 'function') notifyParentApp(student.code, title, msg);
     }
 };
+
+// 🚀 دالة إلغاء الحضور المباشرة
+window.cancelAttendance = function(studentCode) {
+    if(!confirm("هل أنت متأكد من إلغاء تحضير هذا الطالب وإزالته من القائمة؟")) return;
+    const session = classSessions.find(s => s.id === currentActiveSessionId);
+    if(session) {
+        const student = students.find(s => s.code === studentCode);
+        let stIdx = students.findIndex(st => st.code === studentCode);
+        
+        if(student) {
+            let oldStatus = session.attendance[studentCode] || session.attendance[student.phone];
+            if (oldStatus === 'present') student.behaviorPoints = Math.max(0, (student.behaviorPoints || 0) - 5);
+            if (oldStatus === 'late') student.behaviorPoints = Math.max(0, (student.behaviorPoints || 0) - 2);
+            if (typeof oldStatus === 'object' && oldStatus.status === 'platform_makeup') {
+                student.behaviorPoints = Math.max(0, (student.behaviorPoints || 0) - 5);
+            }
+        }
+        
+        delete session.attendance[studentCode];
+        if (session.arrivalTimes) delete session.arrivalTimes[studentCode];
+        
+        // 🛑 1. إيقاف المزامنة الكلية
+        window.isIncomingSync = true;
+        localStorage.setItem("classSessions", JSON.stringify(classSessions));
+        localStorage.setItem("students", JSON.stringify(students));
+        window.isIncomingSync = false;
+        
+        // 🚀 2. الرفع المباشر
+        let sIdx = classSessions.findIndex(s => s.id === currentActiveSessionId);
+        let uid = typeof window.getSafeUid === 'function' ? window.getSafeUid() : "ElSenior_System_Master";
+
+        if (sIdx > -1) {
+            let updates = {};
+            updates[`data/classSessions/${sIdx}/attendance/${studentCode}`] = null;
+            updates[`data/classSessions/${sIdx}/arrivalTimes/${studentCode}`] = null;
+            if (stIdx > -1) updates[`data/students/${stIdx}/behaviorPoints`] = student.behaviorPoints;
+
+            fetch(`https://el-senior-system-default-rtdb.europe-west1.firebasedatabase.app/${uid}.json`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates)
+            }).then(() => {
+                if(typeof triggerGlobalSyncSignal === 'function') triggerGlobalSyncSignal();
+            });
+        }
+
+        if (typeof renderAttendanceTable === 'function') renderAttendanceTable(session);
+        showToast("تم إلغاء تحضير الطالب بنجاح", "warning");
+        setTimeout(() => document.getElementById('attendanceBarcode').focus(), 100);
+    }
+};
+
+
 window.renderAttendanceTable = function(session) { 
     const tbody = document.getElementById("attendance-list"); const gStudents = students.filter(s => s.group === session.group); 
     if(gStudents.length===0) return tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;">لا يوجد طلاب</td></tr>`; 
