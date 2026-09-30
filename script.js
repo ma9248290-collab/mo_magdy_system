@@ -2831,6 +2831,14 @@ function manageClearAction(type) {
         if (typeof renderGroupCards === "function") renderGroupCards();
         showToast("تم مسح المجموعات وتفريغ الطلاب التابعين لها 🗑️");
     } 
+    // 👇 هذا هو الكود الجديد الذي قمنا بإضافته 👇
+    else if (type === 'attendance') {
+        classSessions = [];
+        localStorage.setItem("classSessions", JSON.stringify(classSessions));
+        if (typeof renderSessionCards === "function") renderSessionCards();
+        showToast("تم مسح سجل الحضور والحصص بالكامل بنجاح 🗑️");
+    }
+    // 👆 نهاية الكود الجديد 👆
     else if (type === 'level') {
         const levelVal = document.getElementById("clearLevelSelect").value;
         if (!levelVal) {
@@ -2849,6 +2857,7 @@ function manageClearAction(type) {
         showToast("تم تصفير نقاط السلوك والتميز لجميع الطلاب 🌟");
     } 
     else if (type === 'all') {
+//... باقي الكود كما هو
         // تدمير شامل وعودة لضبط المصنع
         students = [];
         groups = [];
