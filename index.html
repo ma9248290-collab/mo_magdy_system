@@ -904,6 +904,15 @@
                     <textarea id="lecDesc" class="custom-input" rows="3" placeholder="اكتب تفاصيل الكورس..."></textarea>
                 </div>
 
+                <div class="input-group" style="grid-column: span 2; background: rgba(16, 185, 129, 0.05); padding: 15px; border-radius: 8px; border: 1px dashed #10b981; margin-top: 10px;">
+                    <label style="color: #10b981; font-size: 16px; margin-bottom: 10px; font-weight: bold;">📕 مذكرات وملفات الكورس (PDF)</label>
+                    <div id="coursePdfsContainer"></div>
+                    <button type="button" class="theme-btn" style="width: auto; padding: 8px 15px; margin-top: 5px; border-color: #10b981; color: #10b981;" onclick="addCoursePdfRow()">➕ إضافة ملف PDF آخر</button>
+                    <small style="color: var(--text-muted); display: block; margin-top: 8px; font-weight: bold;">* ارفع الملف على Google Drive، واجعل صلاحية الرابط (أي شخص لديه الرابط)، ثم ضعه هنا.</small>
+                </div>
+
+             
+
                 <button class="save-btn" style="grid-column: span 2; font-size: 18px; padding: 15px;" onclick="saveLecture()">نشر الكورس للطلاب 🚀</button>
             </div>
         </div>
@@ -2196,6 +2205,15 @@
                         <label>وصف الكورس</label>
                         <textarea id="editLecDesc" class="custom-input" rows="3"></textarea>
                     </div>
+
+
+                    <div class="input-group" style="grid-column: span 2; background: rgba(16, 185, 129, 0.05); padding: 15px; border-radius: 8px; border: 1px dashed #10b981; margin-top: 10px;">
+                        <label style="color: #10b981; font-size: 16px; margin-bottom: 10px; font-weight: bold;">📕 مذكرات وملفات الكورس (PDF)</label>
+                        <div id="editCoursePdfsContainer"></div>
+                        <button type="button" class="theme-btn" style="width: auto; padding: 8px 15px; margin-top: 5px; border-color: #10b981; color: #10b981;" onclick="addEditCoursePdfRow()">➕ إضافة ملف PDF آخر</button>
+                    </div>
+
+                    
                 </div>
                 <button type="button" class="save-btn" style="width: 100%; background: #f59e0b;" onclick="saveEditedCourse()">💾 حفظ التعديلات</button>
             </form>

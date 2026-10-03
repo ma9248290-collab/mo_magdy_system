@@ -4129,7 +4129,6 @@ window.addEditCourseVideoRow = function(title = "", url = "", linkedSessions = [
     container.appendChild(div);
 };
 
-// 3. الحفظ الجديد للكورس
 window.saveLecture = async function() {
     let title = document.getElementById("lecTitle").value.trim();
     let level = document.getElementById("lecLevel").value;
@@ -4145,7 +4144,15 @@ window.saveLecture = async function() {
         let vType = row.querySelector(".vid-type").value;
         let vPrice = row.querySelector(".vid-price") ? parseFloat(row.querySelector(".vid-price").value) || 0 : 0;
         
-        if(vUrl)videos.push({ title: vTitle || "فيديو", url: vUrl, linkedSessions: vSessions, requiredExam: vExam, type: vType, price: vPrice });
+        if(vUrl) videos.push({ title: vTitle || "فيديو", url: vUrl, linkedSessions: vSessions, requiredExam: vExam, type: vType, price: vPrice });
+    });
+
+    let pdfs = [];
+    document.querySelectorAll(".pdf-row").forEach(row => {
+        let pTitle = row.querySelector(".pdf-title").value.trim();
+        let pUrl = row.querySelector(".pdf-url").value.trim();
+        let pDown = row.querySelector(".pdf-download-cb").checked;
+        if(pUrl) pdfs.push({ title: pTitle || "مذكرة الكورس", url: pUrl, allowDownload: pDown });
     });
 
     if(!title || videos.length === 0) return showToast("يرجى إدخال اسم الكورس وفيديو واحد على الأقل!", "error");
@@ -4159,7 +4166,7 @@ window.saveLecture = async function() {
 
         let newLecture = { 
             id: "lec_" + Date.now(), title: title, level: level, type: "mixed", 
-            price: 0, maxViews: maxViews, desc: desc, videos: videos, 
+            price: 0, maxViews: maxViews, desc: desc, videos: videos, pdfs: pdfs,
             track: document.getElementById("lecTrack").value,
             image: imageBase64 || defaultImage, date: new Date().toISOString().split('T')[0] 
         };
@@ -4171,11 +4178,11 @@ window.saveLecture = async function() {
         showToast("تم نشر الكورس بنجاح! 🎬");
         document.getElementById("lecTitle").value = ""; document.getElementById("lecMaxViews").value = "0";
         document.getElementById("courseVideosContainer").innerHTML = ""; addCourseVideoRow();
+        document.getElementById("coursePdfsContainer").innerHTML = ""; addCoursePdfRow();
         btn.innerText = originalText; renderLectures();
     } catch(e) { alert("حدث خطأ أثناء النشر!"); btn.innerText = originalText; }
 };
 
-// 4. الحفظ عند التعديل
 window.saveEditedCourse = async function() {
     let id = document.getElementById("editLecId").value;
     let title = document.getElementById("editLecTitle").value.trim();
@@ -4193,6 +4200,14 @@ window.saveEditedCourse = async function() {
         if(vUrl) videos.push({ title: vTitle || "فيديو", url: vUrl, linkedSessions: vSessions, requiredExam: vExam, type: vType, price: vPrice });
     });
 
+    let pdfs = [];
+    document.querySelectorAll(".pdf-row-edit").forEach(row => {
+        let pTitle = row.querySelector(".pdf-title").value.trim();
+        let pUrl = row.querySelector(".pdf-url").value.trim();
+        let pDown = row.querySelector(".pdf-download-cb").checked;
+        if(pUrl) pdfs.push({ title: pTitle || "مذكرة الكورس", url: pUrl, allowDownload: pDown });
+    });
+
     if(!title || videos.length === 0) return alert("يرجى إدخال اسم الكورس وفيديو واحد على الأقل!");
 
     let btn = document.querySelector('#editCourseModal .save-btn');
@@ -4207,8 +4222,8 @@ window.saveEditedCourse = async function() {
             ...lec, title: title, level: document.getElementById("editLecLevel").value,
             track: document.getElementById("editLecTrack").value,
             type: "mixed", price: 0, image: newImageBase64 || oldImage, maxViews: maxViews,
-            desc: document.getElementById("editLecDesc").value.trim(), videos: videos,
-            linkedSessions: null, linkedSession: null // مسح النظام القديم
+            desc: document.getElementById("editLecDesc").value.trim(), videos: videos, pdfs: pdfs,
+            linkedSessions: null, linkedSession: null, pdfUrl: null, pdfAllowDownload: null // مسح النظام القديم
         };
 
         await fetch(`https://el-senior-system-default-rtdb.europe-west1.firebasedatabase.app/${window.getSafeUid()}/lectures/${id}.json`, { 
@@ -4245,11 +4260,11 @@ window.switchPlatformTab = function(tabName) {
             activeLevels.forEach(lvl => { selectLevel.innerHTML += `<option value="${lvl}">${lvl}</option>`; });
         }
         
-        // 🔥 التعديل هنا: لو الكونتينر فاضي، ارسم أول صف أوتوماتيك
         let vContainer = document.getElementById("courseVideosContainer");
-        if (vContainer && vContainer.innerHTML.trim() === "") {
-            addCourseVideoRow();
-        }
+        if (vContainer && vContainer.innerHTML.trim() === "") addCourseVideoRow();
+        
+        let pContainer = document.getElementById("coursePdfsContainer");
+        if (pContainer && pContainer.innerHTML.trim() === "") addCoursePdfRow();
     }
     
     if(tabName === 'exams') renderOnlineExams();
@@ -4279,36 +4294,36 @@ document.getElementById("lecLevel")?.addEventListener("change", function() {
 
 
 
-// 4. تعديل دالة الفتح للتعديل (openEditCourseModal)
 window.openEditCourseModal = function(id) {
     let lec = window.fetchedLectures.find(l => l.id === id);
     if(!lec) return;
 
-    // تعبئة البيانات الأساسية للكورس (بدون التسعير القديم لأنه اتنقل جوه الفيديوهات)
     document.getElementById("editLecId").value = lec.id;
     document.getElementById("editLecTitle").value = lec.title;
     document.getElementById("editLecDesc").value = lec.desc || "";
     document.getElementById("editLecMaxViews").value = lec.maxViews || 0;
     document.getElementById("editLecImageBase64").value = lec.image || "";
 
-    // تظبيط قائمة الصفوف الدراسية
     let selectLevel = document.getElementById("editLecLevel");
     document.getElementById("editLecTrack").value = lec.track || 'all';
     let activeLevels = JSON.parse(localStorage.getItem("activeLevels")) || ["الصف الأول الثانوي", "الصف الثاني الثانوي", "الصف الثالث الثانوي"];
     selectLevel.innerHTML = '<option value="all">كل الصفوف (عام)</option>';
     activeLevels.forEach(lvl => { selectLevel.innerHTML += `<option value="${lvl}" ${lec.level === lvl ? 'selected' : ''}>${lvl}</option>`; });
 
-    // رسم الفيديوهات الخاصة بالكورس بكل بياناتها (بما فيها السعر والنوع لكل فيديو)
     let vContainer = document.getElementById("editCourseVideosContainer");
     vContainer.innerHTML = "";
-    
     if(lec.videos && lec.videos.length > 0) {
         lec.videos.forEach(v => addEditCourseVideoRow(v.title, v.url, v.linkedSessions || v.linkedSession, v.requiredExam, v.type, v.price));
-    } else {
-        addEditCourseVideoRow();
-    }
+    } else { addEditCourseVideoRow(); }
     
-    // فتح النافذة
+    let pContainer = document.getElementById("editCoursePdfsContainer");
+    pContainer.innerHTML = "";
+    if(lec.pdfs && lec.pdfs.length > 0) {
+        lec.pdfs.forEach(p => addEditCoursePdfRow(p.title, p.url, p.allowDownload));
+    } else if (lec.pdfUrl) { // دعم للبيانات القديمة
+        addEditCoursePdfRow("مذكرة الكورس", lec.pdfUrl, lec.pdfAllowDownload);
+    } else { addEditCoursePdfRow(); }
+    
     openModal("editCourseModal");
 };
 
@@ -7261,3 +7276,34 @@ window.openEditOnlineExam = function(examId) {
 };
 
 
+window.addCoursePdfRow = function(title = "", url = "", allowDownload = false) {
+    let container = document.getElementById("coursePdfsContainer");
+    let div = document.createElement("div");
+    div.className = "pdf-row";
+    div.style.cssText = "display: flex; gap: 15px; align-items: center; background: white; padding: 10px 15px; border-radius: 8px; border: 1px solid #cbd5e1; margin-bottom: 10px; position: relative;";
+    div.innerHTML = `
+        <input type="text" class="custom-input pdf-title" value="${title}" placeholder="اسم المذكرة (مثال: ملزمة الباب الأول)" style="flex: 1; margin: 0;">
+        <input type="url" class="custom-input pdf-url" value="${url}" placeholder="رابط Google Drive..." style="flex: 2; margin: 0; direction: ltr; text-align: left;">
+        <label style="display: flex; align-items: center; gap: 5px; font-weight: bold; font-size: 13px; cursor: pointer; flex: 1;">
+            <input type="checkbox" class="pdf-download-cb" ${allowDownload ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: #10b981;"> السماح بالتحميل 📥
+        </label>
+        <button type="button" onclick="this.parentElement.remove()" style="background: #fee2e2; color: #ef4444; border: none; border-radius: 6px; padding: 8px 12px; cursor: pointer;">✖</button>
+    `;
+    container.appendChild(div);
+};
+
+window.addEditCoursePdfRow = function(title = "", url = "", allowDownload = false) {
+    let container = document.getElementById("editCoursePdfsContainer");
+    let div = document.createElement("div");
+    div.className = "pdf-row-edit";
+    div.style.cssText = "display: flex; gap: 15px; align-items: center; background: white; padding: 10px 15px; border-radius: 8px; border: 1px solid #cbd5e1; margin-bottom: 10px; position: relative;";
+    div.innerHTML = `
+        <input type="text" class="custom-input pdf-title" value="${title}" placeholder="اسم المذكرة" style="flex: 1; margin: 0;">
+        <input type="url" class="custom-input pdf-url" value="${url}" placeholder="رابط Google Drive..." style="flex: 2; margin: 0; direction: ltr; text-align: left;">
+        <label style="display: flex; align-items: center; gap: 5px; font-weight: bold; font-size: 13px; cursor: pointer; flex: 1;">
+            <input type="checkbox" class="pdf-download-cb" ${allowDownload ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: #10b981;"> السماح بالتحميل 📥
+        </label>
+        <button type="button" onclick="this.parentElement.remove()" style="background: #fee2e2; color: #ef4444; border: none; border-radius: 6px; padding: 8px 12px; cursor: pointer;">✖</button>
+    `;
+    container.appendChild(div);
+};
