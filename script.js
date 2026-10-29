@@ -4875,8 +4875,14 @@ window.openOnlineExamDetails = async function(id) {
         if (exam.group === 'all' || (Array.isArray(exam.group) && exam.group.includes('all'))) {
             targetStudents = students; 
         } else {
-            let examGroups = Array.isArray(exam.group) ? exam.group : [exam.group];
-            targetStudents = students.filter(s => examGroups.includes(s.group));
+            let examTargets = Array.isArray(exam.group) ? exam.group : [exam.group];
+            const cleanStr = (str) => String(str || "").replace("الصف ", "").replace(/[أإآا]/g, "ا").trim();
+            let cleanedTargets = examTargets.map(cleanStr);
+            
+            targetStudents = students.filter(s => 
+                examTargets.includes(s.group) || 
+                cleanedTargets.includes(cleanStr(s.level))
+            );
         }
 
         let submittedList = [];
@@ -5798,11 +5804,22 @@ window.markAttendance = function(codeOrPhone, status) {
         if(!student) return;
         
         let oldStatus = s.attendance[student.code] || s.attendance[student.phone];
-        if (oldStatus) {
-            if (oldStatus === 'present') student.behaviorPoints = Math.max(0, (student.behaviorPoints || 0) - 5);
-            if (oldStatus === 'late') student.behaviorPoints = Math.max(0, (student.behaviorPoints || 0) - 2);
-            if (typeof oldStatus === 'object' && oldStatus.status === 'platform_makeup') {
-                student.behaviorPoints = Math.max(0, (student.behaviorPoints || 0) - 5);
+
+        // 🔔 فحص غياب الحصة السابقة عند تحضير الطالب (حاضر أو متأخر) لأول مرة في الحصة الحالية
+        if ((status === 'present' || status === 'late') && !oldStatus) {
+            const groupSessions = classSessions
+                .filter(sess => sess.group === s.group)
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+            const currentIdx = groupSessions.findIndex(sess => sess.id === s.id);
+            
+            if (currentIdx > 0) {
+                const prevSession = groupSessions[currentIdx - 1];
+                const prevStat = prevSession.attendance[student.code] || prevSession.attendance[student.phone];
+                
+                // إذا كان غائباً في الحصة السابقة
+                if (prevStat === 'absent') {
+                    showToast(`⚠️ تنبيه هام: الطالب (${student.name}) كان غائباً في الحصة السابقة (${prevSession.date})!`, 'warning');
+                }
             }
         }
         

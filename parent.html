@@ -394,7 +394,6 @@ body {
                 <span id="nav-brand-name">الباشمؤرخ</span>
             </div>
             <div class="nav-actions">
-                <button class="btn-outline" onclick="openAuthModal('register')">إنشاء حساب</button>
                 <button class="btn-solid" onclick="openAuthModal('login')">تسجيل الدخول</button>
             </div>
         </nav>
@@ -1201,7 +1200,13 @@ currentStudent.level = (studentGroupObj && studentGroupObj.level) ? studentGroup
                 try {
                     let subRes = await fetch(`https://el-senior-system-default-rtdb.europe-west1.firebasedatabase.app/${globalTeacherId}/onlineSubmissions.json`);
                     let allSubs = await subRes.json() || {};
-                    let myExams = allOnlineExams.filter(e => e && (e.status === "open" || e.status === "closed") && (Array.isArray(e.group) ? e.group.includes(currentStudent.group) || e.group.includes("all") : e.group === currentStudent.group || e.group === "all"));
+                    let myExams = allOnlineExams.filter(e => {
+    if (!e || (e.status !== "open" && e.status !== "closed")) return false;
+    let targetList = Array.isArray(e.group) ? e.group : [e.group];
+    const cleanStr = (str) => String(str || "").replace("الصف ", "").replace(/[أإآا]/g, "ا").trim();
+    let stLevel = cleanStr(currentStudent.level);
+    return targetList.some(t => t === "all" || t === currentStudent.group || (stLevel && cleanStr(t) === stLevel));
+});
                     totalItems += myExams.length;
                     myExams.forEach(e => { if (allSubs[e.id] && (allSubs[e.id][currentStudent.code] || allSubs[e.id][currentStudent.phone])) completedItems++; else if (e.status === "open") missingExams++; });
 
@@ -1654,12 +1659,27 @@ currentStudent.level = (studentGroupObj && studentGroupObj.level) ? studentGroup
                 let allSubs = await subRes.json() || {};
                 window.studentSubmissions = allSubs;
                 let myExams = allOnlineExams.filter(e => {
-    if(!e || (e.status !== "open" && e.status !== "closed")) return false;
-    let groupArray = Array.isArray(e.group) ? e.group : [e.group];
-    let groupMatch = groupArray.includes(currentStudent.group) || groupArray.includes("all");
-    let trackMatch = !e.track || e.track === 'all' || e.track === (currentStudent.track || 'عام');
-    return groupMatch && trackMatch;
-});
+                    if(!e || (e.status !== "open" && e.status !== "closed")) return false;
+                    
+                    let targetList = [];
+                    if (Array.isArray(e.group)) targetList = targetList.concat(e.group);
+                    else if (e.group) targetList.push(e.group);
+                    if (Array.isArray(e.levels)) targetList = targetList.concat(e.levels);
+                    else if (e.level) targetList.push(e.level);
+
+                    // دالة لتوحيد النص وتجاهل كلمة "الصف" أو فروق الهمزات
+                    const cleanStr = (str) => String(str || "").replace("الصف ", "").replace(/[أإآا]/g, "ا").trim();
+                    let stGroup = String(currentStudent.group || "").trim();
+                    let stLevel = cleanStr(currentStudent.level);
+
+                    let isMatched = targetList.some(t => {
+                        let cleanT = cleanStr(t);
+                        return t === "all" || t === stGroup || (stLevel && cleanT === stLevel);
+                    });
+
+                    let trackMatch = !e.track || e.track === 'all' || e.track === (currentStudent.track || 'عام');
+                    return isMatched && trackMatch;
+                });
                 container.innerHTML = "";
                 if (myExams.length === 0) { container.innerHTML = `<div style="text-align:center; grid-column:1/-1; font-weight:bold;">لا توجد امتحانات إلكترونية حالياً.</div>`; return; }
                 
