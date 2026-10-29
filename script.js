@@ -5805,20 +5805,34 @@ window.markAttendance = function(codeOrPhone, status) {
         
         let oldStatus = s.attendance[student.code] || s.attendance[student.phone];
 
-        // 🔔 فحص غياب الحصة السابقة عند تحضير الطالب (حاضر أو متأخر) لأول مرة في الحصة الحالية
-        if ((status === 'present' || status === 'late') && !oldStatus) {
+        // إعادة ضبط النقاط لو كان متسجل قبل كده في نفس الحصة وتم تغيير حالته
+        if (oldStatus) {
+            if (oldStatus === 'present') student.behaviorPoints = Math.max(0, (student.behaviorPoints || 0) - 5);
+            if (oldStatus === 'late') student.behaviorPoints = Math.max(0, (student.behaviorPoints || 0) - 2);
+            if (typeof oldStatus === 'object' && oldStatus.status === 'platform_makeup') {
+                student.behaviorPoints = Math.max(0, (student.behaviorPoints || 0) - 5);
+            }
+        }
+
+        // 🔔 فحص غياب الحصة السابقة وإظهار إشعار بلون مختلف بعد إشعار الحضور
+        if (status === 'present' || status === 'late') {
+            // ترتيب حصص المجموعة حسب التاريخ ثم حسب رقم الـ ID لضمان الترتيب الدقيق
             const groupSessions = classSessions
                 .filter(sess => sess.group === s.group)
-                .sort((a, b) => new Date(a.date) - new Date(b.date));
+                .sort((a, b) => (new Date(a.date) - new Date(b.date)) || (parseInt(a.id) - parseInt(b.id)));
+            
             const currentIdx = groupSessions.findIndex(sess => sess.id === s.id);
             
             if (currentIdx > 0) {
                 const prevSession = groupSessions[currentIdx - 1];
                 const prevStat = prevSession.attendance[student.code] || prevSession.attendance[student.phone];
                 
-                // إذا كان غائباً في الحصة السابقة
-                if (prevStat === 'absent') {
-                    showToast(`⚠️ تنبيه هام: الطالب (${student.name}) كان غائباً في الحصة السابقة (${prevSession.date})!`, 'warning');
+                // لو كان مسجل غائب أو لم يحضر في الحصة السابقة أصلاً
+                if (prevStat === 'absent' || !prevStat) {
+                    // تأخير 400 ملي ثانية ليظهر تحت/بعد إشعار الحضور الأخضر وبصوت تنبيه واضح
+                    setTimeout(() => {
+                        showToast(`🚨 انتبه: الطالب (${student.name}) كان غائباً في الحصة السابقة (${prevSession.date})!`, 'error');
+                    }, 400);
                 }
             }
         }
