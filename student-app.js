@@ -226,29 +226,44 @@ window.saveToStudentSafeVault = async function() {
 };
 
 // ==========================================
-// 🌟 دالة تسجيل الدخول وجلب بيانات الطالب
+// ⚡ دالة تسجيل الدخول فائقة السرعة (تمنع تهنيج الموبايل نهائياً)
 // ==========================================
 async function fetchStudentData(isAutoLogin = false) {
     const code = document.getElementById("studentCode").value.trim();
     const phone = document.getElementById("parentPhone").value.trim();
     const errorMsg = document.getElementById("error-msg");
     const btn = document.getElementById('login-btn-action');
+    const btnTxt = document.getElementById('login-btn-text');
     
     if (!code || !phone || !globalTeacherId) {
-        if(!isAutoLogin) { errorMsg.style.display = "block"; errorMsg.innerText = "تأكد من إدخال البيانات كاملة!"; }
+        if (!isAutoLogin) { 
+            errorMsg.style.display = "block"; 
+            errorMsg.innerText = "تأكد من إدخال الكود ورقم ولي الأمر كاملاً!"; 
+        }
         return;
     }
 
     errorMsg.style.display = "none";
-    if(btn && !isAutoLogin) {
-        btn.innerHTML = `جاري الدخول... ⏳`;
+    if (btn && !isAutoLogin) {
         btn.disabled = true;
+        if (btnTxt) btnTxt.innerText = "جاري الدخول... ⏳";
+        else btn.innerHTML = "جاري الدخول... ⏳";
     }
 
+    const baseUrl = `https://historya-el3alamy-default-rtdb.europe-west1.firebasedatabase.app/${globalTeacherId}`;
+
     try {
-        let licRes = await fetch(`https://saad-62e70-default-rtdb.europe-west1.firebasedatabase.app/${globalTeacherId}/data/settings.json`);
-        let licData = await licRes.json();
-        
+        // 🚀 الخطوة 1: سحب إعدادات المنصة وقائمة الطلاب فقط للتحقق السريع في جزء من الثانية
+        const [licRes, stRes] = await Promise.all([
+            fetch(`${baseUrl}/data/settings.json`),
+            fetch(`${baseUrl}/data/students.json`)
+        ]);
+
+        const [licData, rawStudents] = await Promise.all([
+            licRes.json(),
+            stRes.json()
+        ]);
+
         if (licData) {
             let isExpired = false;
             if (licData.activatedAt) {
@@ -256,77 +271,81 @@ async function fetchStudentData(isAutoLogin = false) {
                 let expirationDate = new Date(activationDate);
                 if (licData.durationDays) expirationDate.setDate(expirationDate.getDate() + parseInt(licData.durationDays));
                 else if (licData.durationMonths) expirationDate.setMonth(expirationDate.getMonth() + parseInt(licData.durationMonths));
-                
                 if (licData.durationMonths != 99 && new Date() > expirationDate) isExpired = true;
             }
-
             if (licData.status === 'suspended' || isExpired) {
                 errorMsg.style.display = "block";
                 errorMsg.innerText = "عفواً، المنصة متوقفة حالياً. يرجى مراجعة إدارة المستر!";
-                if(btn) { btn.innerHTML = "تسجيل الدخول 🚀"; btn.disabled = false; }
-                if(isAutoLogin) {
-                    localStorage.removeItem("momagdy_student_code"); localStorage.removeItem("momagdy_parent_phone"); localStorage.removeItem("momagdy_teacher_id");
-                }
-                return; 
+                if (btn) { btn.classList.remove('verifying'); btn.disabled = false; }
+                if (btnTxt) btnTxt.innerText = "تسجيل الدخول 🚀";
+                return;
             }
         }
 
-        let res = await fetch(`https://saad-62e70-default-rtdb.europe-west1.firebasedatabase.app/${globalTeacherId}/data.json`);
-        let data = await res.json() || {};
-
-        let safeStudents = Array.isArray(data.students) ? data.students : Object.values(data.students || {}).filter(i => i !== null);
-        let safeGroups = Array.isArray(data.groups) ? data.groups : Object.values(data.groups || {}).filter(i => i !== null);
-        let safeClassSessions = Array.isArray(data.classSessions) ? data.classSessions : Object.values(data.classSessions || {}).filter(i => i !== null);
-        let safeExams = Array.isArray(data.exams) ? data.exams : Object.values(data.exams || {}).filter(i => i !== null);
-        let safeHomeworks = Array.isArray(data.homeworks) ? data.homeworks : Object.values(data.homeworks || {}).filter(i => i !== null);
-
-        window.allClassSessions = safeClassSessions;
-
-        let lecRes = await fetch(`https://saad-62e70-default-rtdb.europe-west1.firebasedatabase.app/${globalTeacherId}/lectures.json`);
-        let lecturesData = await lecRes.json() || {};
-        
-        if (Array.isArray(lecturesData)) window.allLectures = lecturesData.filter(l => l !== null).reverse();
-        else window.allLectures = Object.values(lecturesData).filter(l => l !== null).reverse();
-
+        const safeStudents = Array.isArray(rawStudents) ? rawStudents : Object.values(rawStudents || {}).filter(Boolean);
         if (safeStudents.length === 0) {
-            errorMsg.style.display = "block"; errorMsg.innerText = "لا يوجد طلاب مسجلين!";
-            if(btn) { btn.innerHTML = "تسجيل الدخول 🚀"; btn.disabled = false; }
+            errorMsg.style.display = "block"; 
+            errorMsg.innerText = "لا يوجد طلاب مسجلين حالياً!";
+            if (btn) { btn.classList.remove('verifying'); btn.disabled = false; }
+            if (btnTxt) btnTxt.innerText = "تسجيل الدخول 🚀";
             return;
         }
 
         currentStudent = safeStudents.find(s => s && String(s.code).trim() === String(code).trim() && String(s.parentPhone).trim() === String(phone).trim());
         window.currentStudent = currentStudent;
-        
+
         if (!currentStudent) {
-            errorMsg.style.display = "block"; errorMsg.innerText = "البيانات غير مسجلة!";
-            if(btn) { btn.innerHTML = "تسجيل الدخول 🚀"; btn.disabled = false; }
+            errorMsg.style.display = "block"; 
+            errorMsg.innerText = "كود الطالب أو رقم ولي الأمر غير صحيح!";
+            if (btn) { btn.classList.remove('verifying'); btn.disabled = false; }
+            if (btnTxt) btnTxt.innerText = "تسجيل الدخول 🚀";
             return;
         }
 
         if (currentStudent.isSuspended) {
-            if(isAutoLogin) {
-                document.getElementById("landing-page").style.display = "flex";
-                document.getElementById("app-layout").style.display = "none";
-                openAuthModal('login'); 
-                
-                localStorage.removeItem("momagdy_student_code"); 
-                localStorage.removeItem("momagdy_parent_phone"); 
-                localStorage.removeItem("momagdy_teacher_id");
-                
-                document.getElementById("studentCode").value = code;
-                document.getElementById("parentPhone").value = phone;
-            }
-            
-            errorMsg.style.display = "block"; 
+            errorMsg.style.display = "block";
             errorMsg.style.background = "var(--danger)";
             errorMsg.innerText = "⛔ عفواً، حسابك موقوف حالياً من قبل الإدارة. يرجى مراجعة المستر!";
-            
-            if(btn) { btn.innerHTML = "تسجيل الدخول 🚀"; btn.disabled = false; }
+            if (btn) { btn.classList.remove('verifying'); btn.disabled = false; }
+            if (btnTxt) btnTxt.innerText = "تسجيل الدخول 🚀";
             return;
         }
 
-        // 🛡️ استدعاء الخزنة المحمية لاسترجاع الرصيد والكورسات المشترية
-        await window.syncStudentSafeVault();
+        // 🚀 الخطوة 2: فتح شاشة المنصة فوراً للطالب (Zero Lag) بينما تُحمل الجداول في الخلفية بالتوازي
+        localStorage.setItem("historia_student_code", code);
+        localStorage.setItem("historia_parent_phone", phone);
+        localStorage.setItem("historia_teacher_id", globalTeacherId);
+        window.studentCode = code;
+
+        document.getElementById("landing-page").style.display = "none";
+        document.getElementById("auth-modal").classList.remove('active');
+        document.getElementById("app-layout").style.display = "block";
+
+        // 🚀 الخطوة 3: سحب باقي البيانات في طلب متوازي واحد بدون تحميل الماليات أو المصاريف الثقيلة
+        const [groupsRes, sessionsRes, examsRes, hwRes, onlineExRes, lecRes, subRes, trackRes] = await Promise.all([
+            fetch(`${baseUrl}/data/groups.json`),
+            fetch(`${baseUrl}/data/classSessions.json`),
+            fetch(`${baseUrl}/data/exams.json`),
+            fetch(`${baseUrl}/data/homeworks.json`),
+            fetch(`${baseUrl}/data/onlineExams.json`),
+            fetch(`${baseUrl}/lectures.json`),
+            fetch(`${baseUrl}/onlineSubmissions.json`),
+            fetch(`${baseUrl}/course_tracking.json`),
+            window.syncStudentSafeVault()
+        ]);
+
+        const [rawGroups, rawSessions, rawExams, rawHw, rawOnlineExams, lecturesData, allSubs, allTracks] = await Promise.all([
+            groupsRes.json(), sessionsRes.json(), examsRes.json(), hwRes.json(),
+            onlineExRes.json(), lecRes.json(), subRes.json(), trackRes.json()
+        ]);
+
+        const safeGroups = Array.isArray(rawGroups) ? rawGroups : Object.values(rawGroups || {}).filter(Boolean);
+        const safeClassSessions = Array.isArray(rawSessions) ? rawSessions : Object.values(rawSessions || {}).filter(Boolean);
+        const safeExams = Array.isArray(rawExams) ? rawExams : Object.values(rawExams || {}).filter(Boolean);
+        const safeHomeworks = Array.isArray(rawHw) ? rawHw : Object.values(rawHw || {}).filter(Boolean);
+        allOnlineExams = Array.isArray(rawOnlineExams) ? rawOnlineExams : Object.values(rawOnlineExams || {}).filter(Boolean);
+        window.allClassSessions = safeClassSessions;
+        window.allLectures = Array.isArray(lecturesData) ? lecturesData.filter(Boolean).reverse() : Object.values(lecturesData || {}).filter(Boolean).reverse();
 
         let studentGroupObj = safeGroups.find(g => typeof g === 'object' && g.name === currentStudent.group);
         currentStudent.level = (studentGroupObj && studentGroupObj.level) ? studentGroupObj.level : (currentStudent.level || "غير محدد");
@@ -340,42 +359,31 @@ async function fetchStudentData(isAutoLogin = false) {
 
         applyDynamicTheme(currentStudent.level);
 
-        localStorage.setItem("momagdy_student_code", code);
-        localStorage.setItem("momagdy_parent_phone", phone);
-        localStorage.setItem("momagdy_teacher_id", globalTeacherId);
-
-        allOnlineExams = data.onlineExams || [];
-        window.studentCode = code;
-
         document.getElementById("top-name").innerText = currentStudent.name;
         document.getElementById("top-group").innerText = currentStudent.group;
         
-        let cName = document.getElementById("card-student-name"); if(cName) cName.innerText = currentStudent.name;
-        let cLevel = document.getElementById("card-student-level"); if(cLevel) cLevel.innerText = currentStudent.level;
-        let cGroup = document.getElementById("card-student-group-name"); if(cGroup) cGroup.innerText = currentStudent.group;
-        let cCodeNum = document.getElementById("card-student-code-num"); if(cCodeNum) cCodeNum.innerText = code;
-        
+        let cName = document.getElementById("card-student-name"); if (cName) cName.innerText = currentStudent.name;
+        let cLevel = document.getElementById("card-student-level"); if (cLevel) cLevel.innerText = currentStudent.level;
+        let cGroup = document.getElementById("card-student-group-name"); if (cGroup) cGroup.innerText = currentStudent.group;
+        let cCodeNum = document.getElementById("card-student-code-num"); if (cCodeNum) cCodeNum.innerText = code;
+
         let totalScore = currentStudent.behaviorPoints || 0;
         safeClassSessions.filter(s => s && s.group === currentStudent.group).forEach(session => { 
             let att = (session.attendance || {})[currentStudent.code] || (session.attendance || {})[currentStudent.phone]; 
-            if(att === 'present') totalScore += 10; 
+            if (att === 'present') totalScore += 10; 
         }); 
         safeExams.filter(e => e && e.group === currentStudent.group).forEach(exam => { 
             let g = (exam.grades || {})[currentStudent.code] !== undefined ? (exam.grades || {})[currentStudent.code] : (exam.grades || {})[currentStudent.phone]; 
-            if(g !== undefined && exam.maxScore) { totalScore += (parseFloat(g) / parseFloat(exam.maxScore)) * 50; } 
+            if (g !== undefined && exam.maxScore) totalScore += (parseFloat(g) / parseFloat(exam.maxScore)) * 50;
         }); 
         safeHomeworks.filter(h => h && h.group === currentStudent.group).forEach(hw => { 
             let g = (hw.grades || {})[currentStudent.code] !== undefined ? (hw.grades || {})[currentStudent.code] : (hw.grades || {})[currentStudent.phone]; 
-            if(g !== undefined && hw.maxScore) { totalScore += (parseFloat(g) / parseFloat(hw.maxScore)) * 20; } 
+            if (g !== undefined && hw.maxScore) totalScore += (parseFloat(g) / parseFloat(hw.maxScore)) * 20;
         });
-        
         currentStudent.totalScore = Math.round(totalScore);
 
         let cPoints = document.getElementById("card-behavior-points"); 
-        if(cPoints) {
-            cPoints.innerText = currentStudent.totalScore;
-            cPoints.parentElement.innerHTML = `🏆 مجموع النقاط الشامل: <span id="card-behavior-points" style="color: var(--accent); font-size: 20px; font-weight: 900;">${currentStudent.totalScore}</span>`;
-        }
+        if (cPoints) cPoints.innerText = currentStudent.totalScore;
 
         if (typeof JsBarcode !== 'undefined' && document.getElementById("digitalIdBarcode")) {
             JsBarcode("#digitalIdBarcode", currentStudent.code, { format: "CODE128", lineColor: "#0f172a", width: 2, height: 45, displayValue: false });
@@ -383,38 +391,35 @@ async function fetchStudentData(isAutoLogin = false) {
 
         window.updateWalletUI();
 
-        let totalItems = 0; let completedItems = 0; let missingLectures = 0; let missingExams = 0;
-        try {
-            let subRes = await fetch(`https://saad-62e70-default-rtdb.europe-west1.firebasedatabase.app/${globalTeacherId}/onlineSubmissions.json`);
-            let allSubs = await subRes.json() || {};
-            let myExams = allOnlineExams.filter(e => e && (e.status === "open" || e.status === "closed") && (Array.isArray(e.group) ? e.group.includes(currentStudent.group) || e.group.includes("all") : e.group === currentStudent.group || e.group === "all"));
-            totalItems += myExams.length;
-            myExams.forEach(e => { if (allSubs[e.id] && (allSubs[e.id][currentStudent.code] || (currentStudent.phone !== "0" && allSubs[e.id][currentStudent.phone]))) completedItems++; else if (e.status === "open") missingExams++; });
+        // حساب شريط خطة المذاكرة
+        let totalItems = 0, completedItems = 0, missingLectures = 0, missingExams = 0;
+        let safeSubs = allSubs || {};
+        let safeTracks = allTracks || {};
 
-            let myLectures = window.allLectures.filter(l => {
-                if (!l) return false;
-                let levelMatch = l.level === "all" || l.level === currentStudent.level;
-                let trackMatch = !l.track || l.track === 'all' || l.track === (currentStudent.track || 'عام');
-                return levelMatch && trackMatch;
-            });
-            totalItems += myLectures.length;
-            let trackRes = await fetch(`https://saad-62e70-default-rtdb.europe-west1.firebasedatabase.app/${globalTeacherId}/course_tracking.json`);
-            let allTracks = await trackRes.json() || {};
-            myLectures.forEach(l => { 
-                let hasWatched = allTracks[l.id] && (allTracks[l.id][currentStudent.code] || (currentStudent.phone !== "0" && allTracks[l.id][currentStudent.phone])); 
-                if (hasWatched) completedItems++; else missingLectures++; 
-            });
+        let myExams = allOnlineExams.filter(e => e && (e.status === "open" || e.status === "closed") && (Array.isArray(e.group) ? e.group.includes(currentStudent.group) || e.group.includes("all") : e.group === currentStudent.group || e.group === "all"));
+        totalItems += myExams.length;
+        myExams.forEach(e => { 
+            if (safeSubs[e.id] && (safeSubs[e.id][currentStudent.code] || (currentStudent.phone !== "0" && safeSubs[e.id][currentStudent.phone]))) completedItems++; 
+            else if (e.status === "open") missingExams++; 
+        });
 
-            let percent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 100;
-            if(document.getElementById("tracker-bar")) document.getElementById("tracker-bar").style.width = percent + "%";
-            if(document.getElementById("tracker-percentage")) document.getElementById("tracker-percentage").innerText = percent + "%";
-            if(document.getElementById("tracker-text")) document.getElementById("tracker-text").innerText = percent === 100 ? "🎉 ممتاز! لقد أتممت خطتك الدراسية!" : "📈 خطة المذاكرة:";
-            let reminder = "";
-            if (missingLectures > 0) reminder += `🎬 متبقي (${missingLectures}) محاضرة. `;
-            if (missingExams > 0) reminder += `📝 متبقي (${missingExams}) امتحان. `;
-            if(document.getElementById("tracker-reminder")) document.getElementById("tracker-reminder").innerText = reminder || "🎯 واصل تقدمك!";
-        } catch(err) {}
+        let myLectures = window.allLectures.filter(l => l && (l.level === "all" || l.level === currentStudent.level) && (!l.track || l.track === 'all' || l.track === (currentStudent.track || 'عام')));
+        totalItems += myLectures.length;
+        myLectures.forEach(l => { 
+            let hasWatched = safeTracks[l.id] && (safeTracks[l.id][currentStudent.code] || (currentStudent.phone !== "0" && safeTracks[l.id][currentStudent.phone])); 
+            if (hasWatched) completedItems++; else missingLectures++; 
+        });
 
+        let percent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 100;
+        if (document.getElementById("tracker-bar")) document.getElementById("tracker-bar").style.width = percent + "%";
+        if (document.getElementById("tracker-percentage")) document.getElementById("tracker-percentage").innerText = percent + "%";
+        if (document.getElementById("tracker-text")) document.getElementById("tracker-text").innerText = percent === 100 ? "🎉 ممتاز! لقد أتممت خطتك الدراسية!" : "📈 خطة المذاكرة:";
+        let reminder = "";
+        if (missingLectures > 0) reminder += `🎬 متبقي (${missingLectures}) محاضرة. `;
+        if (missingExams > 0) reminder += `📝 متبقي (${missingExams}) امتحان. `;
+        if (document.getElementById("tracker-reminder")) document.getElementById("tracker-reminder").innerText = reminder || "🎯 واصل تقدمك!";
+
+        // رسم جدول الحضور
         let attHtml = `<tr><th>التاريخ</th><th>الموضوع</th><th>حالة الحضور</th></tr>`;
         let hasAtt = false;
         safeClassSessions.filter(s => s && s.group === currentStudent.group).reverse().forEach(s => {
@@ -423,9 +428,10 @@ async function fetchStudentData(isAutoLogin = false) {
             let badge = stat === 'present' ? `<span class="badge badge-present">حاضر ✓</span>` : stat === 'late' ? `<span class="badge" style="background:#fef3c7; color:#d97706;">متأخر ⏳</span>` : stat === 'absent' ? `<span class="badge badge-absent">غائب ✗</span>` : `<span style="color:var(--text-muted); font-weight:bold;">لم يسجل</span>`;
             attHtml += `<tr><td>${s.date}</td><td>${s.topic || 'حصة عادية'}</td><td>${badge}</td></tr>`;
         });
-        if(!hasAtt) attHtml += `<tr><td colspan="3" style="text-align:center; padding: 30px; font-weight:bold;">لا توجد حصص مسجلة.</td></tr>`;
+        if (!hasAtt) attHtml += `<tr><td colspan="3" style="text-align:center; padding: 30px; font-weight:bold;">لا توجد حصص مسجلة.</td></tr>`;
         document.getElementById("attendance-details").innerHTML = attHtml;
 
+        // رسم جدول التقييمات
         let exHtml = `<tr><th>التاريخ</th><th>اسم التقييم</th><th>الدرجة التي حصلت عليها</th></tr>`;
         let hasEx = false;
         safeExams.concat(safeHomeworks).filter(e => e && e.group === currentStudent.group).sort((a,b)=> new Date(b.date) - new Date(a.date)).forEach(e => {
@@ -434,27 +440,24 @@ async function fetchStudentData(isAutoLogin = false) {
             let text = grade !== undefined ? `<span style="font-weight:900; color:var(--primary); font-size:16px;">${grade} <span style="color:var(--text-muted); font-size:13px;">من ${e.maxScore}</span></span>` : `<span style="color:var(--text-muted); font-weight:bold;">لم يتم الرصد</span>`;
             exHtml += `<tr><td>${e.date}</td><td>${e.name}</td><td>${text}</td></tr>`;
         });
-        if(!hasEx) exHtml += `<tr><td colspan="3" style="text-align:center; padding: 30px; font-weight:bold;">لا توجد تقييمات.</td></tr>`;
+        if (!hasEx) exHtml += `<tr><td colspan="3" style="text-align:center; padding: 30px; font-weight:bold;">لا توجد تقييمات.</td></tr>`;
         document.getElementById("exams-details").innerHTML = exHtml;
 
+        renderStudentLectures();
+        showOnlineExams(true);
         fetchStudentNotifications();
-        if(typeof loadStudentStore === "function") loadStudentStore();
-        if(typeof loadForumQuestions === "function") loadForumQuestions();
-        showOnlineExams(true); 
-        renderStudentLectures(); 
 
-        document.getElementById("landing-page").style.display = "none";
-        document.getElementById("auth-modal").classList.remove('active');
-        document.getElementById("app-layout").style.display = "block";
-        if(btn) { btn.innerHTML = "تسجيل الدخول 🚀"; btn.disabled = false; }
+        if (btn) { btn.classList.remove('verifying'); btn.disabled = false; }
+        if (btnTxt) btnTxt.innerText = "تسجيل الدخول 🚀";
 
     } catch (e) {
         console.error("🔥 Crash Details:", e); 
-        errorMsg.style.display = "block"; errorMsg.innerText = "خطأ في الاتصال بالسيرفر! يرجى التأكد من البيانات أو الإنترنت.";
-        if(btn) { btn.innerHTML = "تسجيل الدخول 🚀"; btn.disabled = false; }
+        errorMsg.style.display = "block"; 
+        errorMsg.innerText = "خطأ في الاتصال بالسيرفر! يرجى التأكد من الإنترنت.";
+        if (btn) { btn.classList.remove('verifying'); btn.disabled = false; }
+        if (btnTxt) btnTxt.innerText = "تسجيل الدخول 🚀";
     }
 }
-
 // ==========================================
 // 🛒 دالة شراء المحاضرة (محمية ضد الضياع وتغيير الترتيب)
 // ==========================================
