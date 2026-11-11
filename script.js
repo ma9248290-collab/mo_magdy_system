@@ -1295,7 +1295,7 @@ window.processStudentSaving = async function(keepOpen) {
     if(typeof addSystemLog === "function") addSystemLog("إضافة طالب 🎓", `تسجيل الطالب: ${name} (كود: ${code}) في ${group}`);
 
     // إرسال الواتساب
-    const portalLink = `https://ma9248290-collab.github.io/historya-systtem/parent.html`;
+    const portalLink = `https://ma9248290-collab.github.io/mo_magdy_system/parent.html`;
     const teacherName = localStorage.getItem("teacherName") || "Sami Samir";
     const centerName = localStorage.getItem("centerName") || "البشمؤرخ";
 
@@ -3822,7 +3822,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function updateParentLinkUI() {
     const linkInput = document.getElementById("parentPortalLink");
     if (linkInput) {
-        linkInput.value = "https://ma9248290-collab.github.io/historya-systtem/parent";
+        linkInput.value = "https://ma9248290-collab.github.io/mo_magdy_system/parent";
     }
 }
 
@@ -8410,7 +8410,7 @@ window.confirmApproveRequest = async function() {
                     }
                 }
 
-                let portalLink = `https://ma9248290-collab.github.io/historya-systtem/parent.html`;
+                let portalLink = `https://ma9248290-collab.github.io/mo_magdy_system/parent.html`;
                 let waMsg = `🎉 *تمت الموافقة على طلب الانضمام*\nأهلاً بك في نظام ${localStorage.getItem("teacherName") || "السنتر"}.\n\n👤 *اسم الطالب:* ${newStudent.name}\n📚 *المجموعة:* ${newStudent.group}\n🔑 *كود الدخول الخاص بك:* ${newCode}\n\n🔗 *رابط منصة الطالب:* ${portalLink}`;
                 
                 if (typeof sendAutoWhatsApp === "function") {
