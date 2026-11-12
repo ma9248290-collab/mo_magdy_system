@@ -11939,3 +11939,204 @@ window.processOctoAiBrain = async function(rawInput) {
 
     return `🤖 لم أفهم الأمر بدقة يا مستر! اضغط على <button class="ai-quick-btn" onclick="executeQuickAiCommand('كل الاوامر')">📖 كتالوج الأوامر</button> لترى كل ما يمكنني تنفيذه لك تلقائياً.`;
 };
+
+
+// =========================================================
+// 🛠️ إصلاح شامل لحفظ درجات الامتحانات والواجبات (يدوي + باركود)
+// =========================================================
+
+// 1. تحديث دالة رسم جدول الدرجات لفصل ID الامتحان عن الواجب ومنع التداخل
+window.renderGradesTable = function(itemDetails, tbodyId, saveFunction, itemId, itemType) {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody || !itemDetails) return;
+
+    const gStudents = students.filter(s => s.group === itemDetails.group);
+    if (gStudents.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">لا يوجد طلاب في هذه المجموعة</td></tr>`;
+        return;
+    }
+
+    if (!itemDetails.grades) itemDetails.grades = {};
+
+    let prevItem = null;
+    if (itemType === 'exam') {
+        const grpItems = exams.filter(e => e.group === itemDetails.group).sort((a, b) => new Date(a.date) - new Date(b.date));
+        prevItem = grpItems[grpItems.findIndex(e => String(e.id) === String(itemDetails.id)) - 1];
+    } else if (itemType === 'hw') {
+        const grpItems = homeworks.filter(h => h.group === itemDetails.group).sort((a, b) => new Date(a.date) - new Date(b.date));
+        prevItem = grpItems[grpItems.findIndex(h => String(h.id) === String(itemDetails.id)) - 1];
+    }
+
+    const isHw = (itemType === 'hw' || tbodyId === 'hw-grades-list');
+    const btnColor = isHw ? 'var(--hw-color)' : 'var(--exam-color)';
+    const fnName = isHw ? 'saveHwGrade' : 'saveExamGrade';
+    const inputPrefix = isHw ? 'hw_grade_' : 'exam_grade_';
+
+    let htmlContent = "";
+
+    gStudents.forEach(st => {
+        let grade = itemDetails.grades[st.code] !== undefined
+            ? itemDetails.grades[st.code]
+            : (st.phone && st.phone !== "0" && itemDetails.grades[st.phone] !== undefined ? itemDetails.grades[st.phone] : '');
+
+        let pHT = `<span style="color:var(--text-muted)">--</span>`;
+        if (prevItem && prevItem.grades) {
+            let pG = prevItem.grades[st.code] !== undefined
+                ? prevItem.grades[st.code]
+                : (st.phone && st.phone !== "0" ? prevItem.grades[st.phone] : undefined);
+            if (pG !== undefined) {
+                pHT = `<strong style="color:${btnColor}">${pG} / ${prevItem.maxScore}</strong>`;
+            }
+        }
+
+        let noteIcon = "";
+        if (typeof openStudentNoteModal === "function") {
+            noteIcon = st.note && st.note.trim() !== ""
+                ? `<span style="cursor: pointer; margin-right: 8px; font-size: 16px;" title="عرض الملاحظة" onclick="openStudentNoteModal('${st.code}')">📝</span>`
+                : `<span style="cursor: pointer; margin-right: 8px; font-size: 14px; opacity: 0.3;" title="إضافة ملاحظة" onclick="openStudentNoteModal('${st.code}')">📝</span>`;
+        }
+
+        htmlContent += `
+        <tr>
+            <td><strong>${st.code}</strong></td>
+            <td>${st.name} ${noteIcon}</td>
+            <td>${st.phone}</td>
+            <td style="direction:ltr;">${pHT}</td>
+            <td style="direction: ltr;">
+                <span style="color:var(--text-muted);">/ ${itemDetails.maxScore}</span>
+                <input type="number" id="${inputPrefix}${st.code}" class="custom-input" 
+                    style="width:75px; padding:6px; text-align:center; font-weight:bold;" 
+                    value="${grade}" min="0" max="${itemDetails.maxScore}"
+                    onkeypress="if(event.key==='Enter'){ event.preventDefault(); ${fnName}('${st.code}'); }">
+            </td>
+            <td>
+                <button type="button" class="btn-present" onclick="${fnName}('${st.code}')" style="background-color: ${btnColor}; color: #fff; cursor: pointer;">حفظ</button>
+            </td>
+        </tr>`;
+    });
+
+    tbody.innerHTML = htmlContent;
+};
+
+// 2. دالة حفظ درجة الامتحان (الزر اليدوي أو Enter)
+window.saveExamGrade = function(studentCode) {
+    const exam = exams.find(e => String(e.id) === String(currentActiveExamId));
+    if (!exam) return showToast("لم يتم تحديد الامتحان!", "error");
+
+    const inputEl = document.getElementById(`exam_grade_${studentCode}`) || document.getElementById(`grade_${studentCode}`);
+    if (!inputEl) return;
+
+    const rawVal = inputEl.value.trim();
+    if (!exam.grades) exam.grades = {};
+
+    const student = students.find(s => String(s.code) === String(studentCode));
+
+    // لو فرّغ الخانة وضغط حفظ -> يمسح الدرجة المرصودة
+    if (rawVal === "") {
+        delete exam.grades[studentCode];
+        if (student && student.phone && student.phone !== "0") delete exam.grades[student.phone];
+        localStorage.setItem("exams", JSON.stringify(exams));
+        showToast(`تم مسح درجة الطالب: ${student ? student.name : studentCode}`, "warning");
+        return;
+    }
+
+    const score = parseFloat(rawVal);
+    const maxScore = parseFloat(exam.maxScore);
+
+    if (isNaN(score) || score < 0 || score > maxScore) {
+        return showToast(`يرجى إدخال درجة صحيحة بين 0 و ${maxScore}!`, "error");
+    }
+
+    exam.grades[studentCode] = score;
+    localStorage.setItem("exams", JSON.stringify(exams));
+
+    // تأثير بصري سريع يوضح نجاح الحفظ في الخانة
+    inputEl.style.borderColor = "var(--success-color)";
+    inputEl.style.backgroundColor = "rgba(16, 185, 129, 0.1)";
+    setTimeout(() => { inputEl.style.borderColor = ""; inputEl.style.backgroundColor = ""; }, 800);
+
+    showToast(`تم حفظ درجة (${student ? student.name : studentCode}): ${score} / ${maxScore} ✅`, "success");
+    if (typeof addSystemLog === "function" && student) {
+        addSystemLog("رصد امتحان 📝", `رصد درجة ${score}/${maxScore} للطالب ${student.name} في (${exam.name})`);
+    }
+};
+
+// 3. دالة حفظ درجة الواجب (الزر اليدوي أو Enter)
+window.saveHwGrade = function(studentCode) {
+    const hw = homeworks.find(h => String(h.id) === String(currentActiveHwId));
+    if (!hw) return showToast("لم يتم تحديد الواجب!", "error");
+
+    const inputEl = document.getElementById(`hw_grade_${studentCode}`) || document.getElementById(`grade_${studentCode}`);
+    if (!inputEl) return;
+
+    const rawVal = inputEl.value.trim();
+    if (!hw.grades) hw.grades = {};
+
+    const student = students.find(s => String(s.code) === String(studentCode));
+
+    if (rawVal === "") {
+        delete hw.grades[studentCode];
+        if (student && student.phone && student.phone !== "0") delete hw.grades[student.phone];
+        localStorage.setItem("homeworks", JSON.stringify(homeworks));
+        showToast(`تم مسح درجة واجب الطالب: ${student ? student.name : studentCode}`, "warning");
+        return;
+    }
+
+    const score = parseFloat(rawVal);
+    const maxScore = parseFloat(hw.maxScore);
+
+    if (isNaN(score) || score < 0 || score > maxScore) {
+        return showToast(`يرجى إدخال درجة صحيحة بين 0 و ${maxScore}!`, "error");
+    }
+
+    hw.grades[studentCode] = score;
+    localStorage.setItem("homeworks", JSON.stringify(homeworks));
+
+    inputEl.style.borderColor = "var(--success-color)";
+    inputEl.style.backgroundColor = "rgba(16, 185, 129, 0.1)";
+    setTimeout(() => { inputEl.style.borderColor = ""; inputEl.style.backgroundColor = ""; }, 800);
+
+    showToast(`تم حفظ واجب (${student ? student.name : studentCode}): ${score} / ${maxScore} 📚`, "success");
+    if (typeof addSystemLog === "function" && student) {
+        addSystemLog("تقييم واجب 📚", `رصد درجة ${score}/${maxScore} للطالب ${student.name} في (${hw.name})`);
+    }
+};
+
+// 4. تفعيل الرصد السريع بالباركود أو الاسم في الامتحانات والواجبات
+window.submitExamBarcodeGrade = function() {
+    const codeInput = document.getElementById("examBarcodeCode");
+    const gradeInput = document.getElementById("examBarcodeGrade");
+    if (!codeInput || !gradeInput) return;
+
+    const student = findStudentByCodeOrName(codeInput.value.trim());
+    if (!student) return showToast("الطالب غير موجود!", "error");
+
+    const rowInput = document.getElementById(`exam_grade_${student.code}`);
+    if (!rowInput) return showToast("الطالب ليس ضمن هذه المجموعة!", "error");
+
+    rowInput.value = gradeInput.value.trim();
+    saveExamGrade(student.code);
+
+    codeInput.value = "";
+    gradeInput.value = "";
+    codeInput.focus();
+};
+
+window.submitHwBarcodeGrade = function() {
+    const codeInput = document.getElementById("hwBarcodeCode");
+    const gradeInput = document.getElementById("hwBarcodeGrade");
+    if (!codeInput || !gradeInput) return;
+
+    const student = findStudentByCodeOrName(codeInput.value.trim());
+    if (!student) return showToast("الطالب غير موجود!", "error");
+
+    const rowInput = document.getElementById(`hw_grade_${student.code}`);
+    if (!rowInput) return showToast("الطالب ليس ضمن هذه المجموعة!", "error");
+
+    rowInput.value = gradeInput.value.trim();
+    saveHwGrade(student.code);
+
+    codeInput.value = "";
+    gradeInput.value = "";
+    codeInput.focus();
+};
