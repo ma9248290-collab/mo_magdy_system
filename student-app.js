@@ -250,7 +250,7 @@ async function fetchStudentData(isAutoLogin = false) {
         else btn.innerHTML = "جاري الدخول... ⏳";
     }
 
-    const baseUrl = `https://historya-el3alamy-default-rtdb.europe-west1.firebasedatabase.app/${globalTeacherId}`;
+    const baseUrl = `https://saad-62e70-default-rtdb.europe-west1.firebasedatabase.app/${globalTeacherId}`;
 
     try {
         // 🚀 الخطوة 1: سحب إعدادات المنصة وقائمة الطلاب فقط للتحقق السريع في جزء من الثانية
@@ -312,9 +312,9 @@ async function fetchStudentData(isAutoLogin = false) {
         }
 
         // 🚀 الخطوة 2: فتح شاشة المنصة فوراً للطالب (Zero Lag) بينما تُحمل الجداول في الخلفية بالتوازي
-        localStorage.setItem("historia_student_code", code);
-        localStorage.setItem("historia_parent_phone", phone);
-        localStorage.setItem("historia_teacher_id", globalTeacherId);
+        localStorage.setItem("momagdy_student_code", code);
+localStorage.setItem("momagdy_parent_phone", phone);
+localStorage.setItem("momagdy_teacher_id", globalTeacherId);
         window.studentCode = code;
 
         document.getElementById("landing-page").style.display = "none";
