@@ -1481,13 +1481,16 @@ window.startExam = function(examId) {
     }, 1000);
 };
 
-// شاشة المراجعة بالعربية مع عرض الخريطة وتفسير ناتج التعلم
+// =========================================================
+// 📝 شاشة مراجعة الامتحان (عرض إجابة الطالب + الإجابة الصحيحة + التفسير)
+// =========================================================
 window.reviewExam = function(examId) {
-    let exam = allOnlineExams.find(e => e.id === examId); 
-    let examSubs = window.studentSubmissions[examId] || {};
-    let sub = examSubs[currentStudent.code] || (currentStudent.phone !== "0" ? examSubs[currentStudent.phone] : null);
+    let exam = allOnlineExams.find(e => e && e.id === examId); 
+    let examSubs = (window.studentSubmissions && window.studentSubmissions[examId]) ? window.studentSubmissions[examId] : {};
+    let sub = examSubs[currentStudent.code] || (currentStudent.phone && currentStudent.phone !== "0" ? examSubs[currentStudent.phone] : null);
 
-    if(!exam || !sub) return;
+    if (!exam || !sub) return;
+
     document.getElementById("online-exams-list-screen").style.display = "none"; 
     document.getElementById("review-exam-screen").style.display = "block";
     
@@ -1498,33 +1501,91 @@ window.reviewExam = function(examId) {
     let container = document.getElementById("review-questions-render"); 
     container.innerHTML = "";
     
-    exam.questions.forEach((q, index) => {
-        let studentAns = sub.answers ? sub.answers[q.id] : undefined; 
-        let qScore = 0; let isCorrect = false; let ansHtml = "";
-        
-        if (q.type === 'mcq') { 
-            qHtml += `<div class="q-options" style="display: flex; flex-direction: column; gap: 12px;">`; 
-            q.options.forEach((opt, optIndex) => { 
-                let letterBadge = arabicLetters[optIndex] || (optIndex + 1);
-                
-                // دعم ذكي: قراءة الاختيار كنص (الامتحانات القديمة) أو كصورة ونص (الامتحانات الجديدة)
-                let optText = typeof opt === 'object' ? opt.text : opt;
-                let optImage = (typeof opt === 'object' && opt.image) ? `<img src="${opt.image}" style="max-height: 90px; border-radius: 8px; margin-right: 15px; border: 1px solid var(--border);">` : '';
+    const arabicLetters = ["أ", "ب", "ج", "د", "هـ", "و"];
 
-                qHtml += `<label style="display: flex; align-items: center; gap: 15px; background: var(--bg-color); border: 2px solid var(--border); padding: 15px 20px; border-radius: 16px; cursor: pointer; transition: 0.25s; font-size: 17px; font-weight: 700;"
-                onclick="document.querySelectorAll('input[name=ans_${q.id}]').forEach(inp => {inp.parentElement.style.borderColor='var(--border)'; inp.parentElement.style.background='var(--bg-color)';}); this.style.borderColor='var(--primary)'; this.style.background='rgba(152, 0, 0, 0.06)'; markQuestionAnswered(${index});">
-                    <input type="radio" name="ans_${q.id}" value="${optIndex}" style="width: 20px; height: 20px; accent-color: var(--primary);"> 
-                    <span style="background: var(--primary); color: white; width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900;">${letterBadge}</span>
-                    <span style="flex: 1; display: flex; align-items: center;">${optText} ${optImage}</span>
-                </label>`; 
-            }); 
-            qHtml += `</div>`; 
-        } else if (q.type === 'tf') {
-            isCorrect = (String(studentAns) === String(q.correctAnswerTF || q.correctAnswer)); qScore = isCorrect ? q.points : 0;
-            ansHtml = `<div style="background: ${isCorrect?'#d1fae5':'#fee2e2'}; color: #0f172a; padding:15px; border-radius:12px; font-weight:bold; border:2px solid ${isCorrect?'#10b981':'#ef4444'}; font-size: 16px;">إجابتك: ${studentAns==='true'?'صحيحة ✔️':'خاطئة ❌'} <br> الإجابة النموذجية: ${(q.correctAnswerTF || q.correctAnswer)==='true'?'صحيحة ✔️':'خاطئة ❌'}</div>`;
-        } else {
-            qScore = (sub.manualGrades && sub.manualGrades[q.id] !== undefined) ? sub.manualGrades[q.id] : (studentAns === q.correctAnswerText ? q.points : 0);
-            ansHtml = `<div style="background:var(--bg-color); padding:15px; border-radius:12px; border:2px solid var(--border); font-weight:bold; font-size: 16px;">إجابتك: <span style="color: var(--primary);">${studentAns || 'لم يتم الإجابة'}</span></div>`;
+    (exam.questions || []).forEach((q, index) => {
+        let studentAns = sub.answers ? sub.answers[q.id] : undefined; 
+        let qScore = 0; 
+        let isCorrect = false; 
+        let ansHtml = "";
+        
+        // 1. أسئلة الاختيار من متعدد (MCQ)
+        if (q.type === 'mcq') { 
+            let studentIdx = studentAns !== undefined && studentAns !== null ? parseInt(studentAns) : -1;
+            let correctIdx = parseInt(q.correctAnswerIndex);
+            isCorrect = (studentIdx === correctIdx);
+            qScore = isCorrect ? (parseFloat(q.points) || 1) : 0;
+
+            ansHtml += `<div style="display: flex; flex-direction: column; gap: 10px; margin-top: 12px;">`;
+            (q.options || []).forEach((opt, optIndex) => {
+                let letterBadge = arabicLetters[optIndex] || (optIndex + 1);
+                let optText = typeof opt === 'object' ? (opt.text || '') : opt;
+                let optImage = (typeof opt === 'object' && opt.image) ? `<img src="${opt.image}" style="max-height: 80px; border-radius: 8px; margin-right: 12px; border: 1px solid var(--border);">` : '';
+
+                let isThisCorrect = (optIndex === correctIdx);
+                let isThisSelected = (optIndex === studentIdx);
+
+                let borderCol = "var(--border)";
+                let bgCol = "var(--bg-color)";
+                let statusTag = "";
+
+                if (isThisCorrect) {
+                    borderCol = "#10b981";
+                    bgCol = "rgba(16, 185, 129, 0.12)";
+                    statusTag = `<span style="background:#10b981; color:#fff; padding:4px 10px; border-radius:8px; font-size:12px; font-weight:900; margin-right:auto;">الإجابة الصحيحة ✔️</span>`;
+                }
+                if (isThisSelected && !isThisCorrect) {
+                    borderCol = "#ef4444";
+                    bgCol = "rgba(239, 68, 68, 0.12)";
+                    statusTag = `<span style="background:#ef4444; color:#fff; padding:4px 10px; border-radius:8px; font-size:12px; font-weight:900; margin-right:auto;">اختيارك الخاطئ ❌</span>`;
+                } else if (isThisSelected && isThisCorrect) {
+                    statusTag = `<span style="background:#10b981; color:#fff; padding:4px 10px; border-radius:8px; font-size:12px; font-weight:900; margin-right:auto;">إجابتك صحيحة 🎯</span>`;
+                }
+
+                ansHtml += `
+                <div style="display: flex; align-items: center; gap: 12px; background: ${bgCol}; border: 2px solid ${borderCol}; padding: 12px 16px; border-radius: 14px; font-size: 16px; font-weight: 700; flex-wrap: wrap;">
+                    <span style="background: ${isThisCorrect ? '#10b981' : (isThisSelected ? '#ef4444' : 'var(--primary)')}; color: white; width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; flex-shrink: 0;">${letterBadge}</span>
+                    <span style="flex: 1; display: flex; align-items: center; color: var(--text-main);">${optText} ${optImage}</span>
+                    ${statusTag}
+                </div>`;
+            });
+
+            if (studentIdx === -1) {
+                ansHtml += `<div style="color: #ef4444; font-weight: 900; font-size: 13px; margin-top: 4px;">⚠️ لم تقم باختيار إجابة لهذا السؤال.</div>`;
+            }
+            ansHtml += `</div>`;
+        } 
+        // 2. أسئلة صح وخطأ (True / False)
+        else if (q.type === 'tf') {
+            let correctVal = String(q.correctAnswerTF !== undefined ? q.correctAnswerTF : q.correctAnswer);
+            isCorrect = (String(studentAns) === correctVal); 
+            qScore = isCorrect ? (parseFloat(q.points) || 1) : 0;
+            
+            let studentText = studentAns === 'true' ? 'صحيحة ✔️' : (studentAns === 'false' ? 'خاطئة ❌' : 'لم يُجب ⚠️');
+            let correctText = correctVal === 'true' ? 'صحيحة ✔️' : 'خاطئة ❌';
+
+            ansHtml = `
+            <div style="background: ${isCorrect ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)'}; color: var(--text-main); padding: 15px; border-radius: 14px; font-weight: bold; border: 2px solid ${isCorrect ? '#10b981' : '#ef4444'}; font-size: 15px; line-height: 1.8;">
+                <div>إجابتك: <strong style="color: ${isCorrect ? '#10b981' : '#ef4444'};">${studentText}</strong></div>
+                <div>الإجابة النموذجية: <strong style="color: #10b981;">${correctText}</strong></div>
+            </div>`;
+        } 
+        // 3. أسئلة أكمل والمقالي
+        else {
+            let manualG = (sub.manualGrades && sub.manualGrades[q.id] !== undefined) ? parseFloat(sub.manualGrades[q.id]) : null;
+            if (manualG !== null) {
+                qScore = manualG;
+                isCorrect = qScore > 0;
+            } else {
+                isCorrect = (studentAns || "").trim().toLowerCase() === (q.correctAnswerText || "").trim().toLowerCase();
+                qScore = isCorrect ? (parseFloat(q.points) || 1) : 0;
+            }
+
+            ansHtml = `
+            <div style="background: var(--bg-color); padding: 15px; border-radius: 14px; border: 2px solid var(--border); font-weight: bold; font-size: 15px; line-height: 1.8;">
+                <div>إجابتك: <span style="color: var(--primary);">${studentAns || 'لم يتم الإجابة'}</span></div>
+                ${q.correctAnswerText ? `<div>الإجابة النموذجية: <span style="color: #10b981;">${q.correctAnswerText}</span></div>` : ''}
+            </div>`;
         }
 
         let explanationHtml = q.explanation ? `
@@ -1532,15 +1593,15 @@ window.reviewExam = function(examId) {
                 💡 <strong style="color: #059669;">تفسير ناتج التعلم:</strong> ${q.explanation}
             </div>` : '';
 
-        let imgHtml = q.imageUrl ? `<img src="${q.imageUrl}" style="max-width:100%; max-height:220px; border-radius:12px; margin-bottom:15px; display:block;">` : '';
+        let imgHtml = q.imageUrl ? `<img src="${q.imageUrl}" style="max-width:100%; max-height:240px; border-radius:12px; margin: 0 auto 15px auto; display:block; border: 1px solid var(--border);">` : '';
 
         container.innerHTML += `
-        <div style="background: var(--card-bg); padding: 25px; border-radius: 20px; border: 1px solid var(--border); margin-bottom: 20px; text-align: right; direction: rtl;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px dashed var(--border); padding-bottom: 12px;">
-                <span style="color: var(--secondary); font-weight: 900;">السؤال ${index + 1}</span>
-                <span style="background: ${qScore > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; color: ${qScore > 0 ? '#10b981' : '#ef4444'}; padding: 6px 16px; border-radius: 10px; font-weight: 900;">الدرجة: ${qScore} / ${q.points}</span>
+        <div class="v14-surface-card" style="padding: 22px; border-radius: 20px; border: 1px solid var(--border); margin-bottom: 18px; text-align: right; direction: rtl;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 2px dashed var(--border); padding-bottom: 12px;">
+                <span style="color: var(--secondary); font-weight: 900; font-size: 15px;">📜 السؤال ${index + 1}</span>
+                <span style="background: ${qScore > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)'}; color: ${qScore > 0 ? '#10b981' : '#ef4444'}; padding: 5px 14px; border-radius: 10px; font-weight: 900; font-size: 14px;">الدرجة: ${qScore} / ${q.points}</span>
             </div>
-            <h3 style="color: var(--secondary); font-size: 19px; line-height: 1.6; margin: 0 0 15px 0;">${q.text}</h3>
+            <h3 style="color: var(--secondary); font-size: 18px; line-height: 1.6; margin: 0 0 14px 0; font-weight: 900;">${index + 1}. ${q.text}</h3>
             ${imgHtml}
             ${ansHtml}
             ${explanationHtml}
