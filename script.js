@@ -5962,10 +5962,7 @@ window.backToPlatformExams = function() {
     if(typeof renderOnlineExams === 'function') renderOnlineExams();
 };
 
-// دعم إضافي لو الزرار القديم لسه موجود في الـ HTML
-window.backToExams = function() {
-    window.backToPlatformExams();
-};
+
 
 
 // ==========================================
@@ -12144,4 +12141,33 @@ window.submitHwBarcodeGrade = function() {
     codeInput.value = "";
     gradeInput.value = "";
     codeInput.focus();
+};
+
+
+// =========================================================
+// 🔙 إصلاح زر العودة في الامتحانات الورقية والإلكترونية
+// =========================================================
+window.backToExams = function() {
+    // 1. إخفاء شاشة رصد الامتحان الورقي وتفاصيل الأونلاين
+    const examDetails = document.getElementById("exam-details-view");
+    const onlineExamDetails = document.getElementById("online-exam-details-view");
+    const examsOverview = document.getElementById("exams-overview");
+
+    if (examDetails) examDetails.style.display = "none";
+    if (onlineExamDetails) onlineExamDetails.style.display = "none";
+
+    // 2. إظهار شبكة كروت الامتحانات الرئيسية وتحديثها
+    if (examsOverview) {
+        examsOverview.style.display = "block";
+        if (typeof renderExamCards === "function") renderExamCards();
+    }
+
+    // 3. لو كنا داخل تبويب إدارة المنصة، نرجع لقائمة امتحانات المنصة أيضاً
+    if (document.getElementById("platform-view")?.style.display === "block") {
+        if (typeof window.backToPlatformExams === "function") {
+            window.backToPlatformExams();
+        }
+    }
+
+    currentActiveExamId = null;
 };
