@@ -3,6 +3,10 @@
 // 1. قواعد البيانات والتهيئة الأساسية
 // ==========================================
 const TEACHER_NAME = "البشمؤرخ";
+const FIREBASE_BASE_DOMAIN = "https://saad-62e70-default-rtdb.europe-west1.firebasedatabase.app";
+window.getSafeUid = function() {
+    return "momagdy"; // 🔒 تثبيت معرف مستر محمد مجدي
+};
 let students = JSON.parse(localStorage.getItem("students")) || [];
 let classSessions = JSON.parse(localStorage.getItem("classSessions")) || []; 
 let exams = JSON.parse(localStorage.getItem("exams")) || []; 
@@ -735,18 +739,18 @@ async function activateSoftware() {
 }
 
 // =========================================================
-// 🛡️ محرك المزامنة الذكي المطور V2 (يدعم الحذف النهائي والمسح الشامل بدون تعارض)
+// 🛡️ محرك المزامنة الذكي المطور لبشمؤرخ (مربوط بسيرفر saad-62e70/momagdy)
 // =========================================================
 
 window.isIncomingSync = false;
 window.isSyncingNow = false;
+window.isInitialCloudLoadDone = false; // 🔒 حماية من الكتابة فوق السحابة قبل اكتمال السحب الأول
 window.hasPendingOfflineChanges = localStorage.getItem("hasPendingOfflineChanges") === "true";
 
-// سجل العناصر المحذوفة لمنع عودتها من السحابة أثناء الدمج
 window.deletedItemsRegistry = JSON.parse(localStorage.getItem("deletedItemsRegistry") || '{"students":[],"groups":[],"sessions":[],"exams":[],"homeworks":[],"expenses":[],"books":[],"schedule":[]}');
 
 window.registerDeletedItem = function(category, idOrCode) {
-    if (!idOrCode) return;
+    if (!idOrCode || !window.isInitialCloudLoadDone) return;
     const key = String(idOrCode).trim();
     if (!window.deletedItemsRegistry[category]) window.deletedItemsRegistry[category] = [];
     if (!window.deletedItemsRegistry[category].includes(key)) {
@@ -758,17 +762,16 @@ window.registerDeletedItem = function(category, idOrCode) {
 const originalSetItem = localStorage.setItem;
 const keysToSync = ["students", "classSessions", "exams", "homeworks", "schedule", "groups", "financeRecords", "expenses", "books", "monthlyPayments", "onlineExams"];
 
-// 1️⃣ مراقبة التعديلات المحلية واكتشاف أي عملية حذف تلقائياً
+// 1️⃣ مراقبة التعديلات المحلية
 localStorage.setItem = function(k, v) {
-    // اكتشاف الحذف تلقائياً بمقارنة القديم بالجديد قبل الحفظ
-    if (keysToSync.includes(k) && !window.isIncomingSync) {
+    if (keysToSync.includes(k) && !window.isIncomingSync && window.isInitialCloudLoadDone) {
         try {
             const oldRaw = localStorage.getItem(k);
             if (oldRaw && v) {
                 const oldData = JSON.parse(oldRaw);
                 const newData = JSON.parse(v);
 
-                if (Array.isArray(oldData) && Array.isArray(newData) && newData.length < oldData.length) {
+                if (Array.isArray(oldData) && Array.isArray(newData) && newData.length < oldData.length && (newData.length > 0 || oldData.length === 1)) {
                     const idField = k === "students" ? "code" : (k === "groups" ? "name" : "id");
                     const catMap = { students: "students", groups: "groups", classSessions: "sessions", exams: "exams", homeworks: "homeworks", expenses: "expenses", books: "books", schedule: "schedule" };
                     const cat = catMap[k];
@@ -787,7 +790,7 @@ localStorage.setItem = function(k, v) {
 
     originalSetItem.apply(this, arguments);
 
-    if (keysToSync.includes(k) && !window.isIncomingSync) {
+    if (keysToSync.includes(k) && !window.isIncomingSync && window.isInitialCloudLoadDone) {
         originalSetItem.call(localStorage, "hasPendingOfflineChanges", "true");
         originalSetItem.call(localStorage, "lastLocalEditTime", Date.now().toString());
         window.hasPendingOfflineChanges = true;
@@ -801,7 +804,7 @@ localStorage.setItem = function(k, v) {
             } else {
                 updateNetworkBadgeUI("offline");
             }
-        }, 1200);
+        }, 800);
     }
 };
 
@@ -821,7 +824,7 @@ function updateNetworkBadgeUI(state) {
     } else if (state === "syncing") {
         dot.style.background = "#f59e0b";
         dot.style.boxShadow = "0 0 6px #f59e0b";
-        txt.innerText = "جاري حفظ التعديلات... ⏳";
+        txt.innerText = "جاري المزامنة... ⏳";
         badge.style.color = "#f59e0b";
         badge.style.background = "rgba(245, 158, 11, 0.1)";
     } else {
@@ -833,81 +836,138 @@ function updateNetworkBadgeUI(state) {
     }
 }
 
-// 3️⃣ خوارزمية الدمج الذكي (تحترم الحذف المحلي وتمنع عودة الممسوح)
+// 3️⃣ خوارزمية الدمج الذكي وسحب البيانات من السحابة
 function mergeLocalAndCloudData(cloudData, isLocalPriority = false) {
     cloudData = cloudData || {};
     const del = window.deletedItemsRegistry || {};
+    const toArr = (obj) => Array.isArray(obj) ? obj : Object.values(obj || {}).filter(Boolean);
 
-    // إذا كان هناك تعديل أو حذف محلي نشط (isLocalPriority = true)، نعتمد القوائم المحلية كأساس ونضيف فقط الجديد من السحابة غير المحذوف
-    if (isLocalPriority) {
-        // الدمج مع استبعاد أي عنصر موجود في سجل المحذوفات
-        const filterDeleted = (arr, idKey, cat) => {
-            const deletedList = del[cat] || [];
-            return (Array.isArray(arr) ? arr : Object.values(arr || {}).filter(Boolean))
-                .filter(item => item && !deletedList.includes(String(item[idKey]).trim()));
-        };
+    const filterDeleted = (arr, idKey, cat) => {
+        const deletedList = del[cat] || [];
+        return toArr(arr).filter(item => item && !deletedList.includes(String(item[idKey]).trim()));
+    };
 
-        // 1. الطلاب
+    const cloudStudents = filterDeleted(cloudData.students, "code", "students");
+    const cloudGroups = filterDeleted(cloudData.groups, "name", "groups");
+    const cloudSessions = filterDeleted(cloudData.classSessions, "id", "sessions");
+
+    // إذا كان المتصفح فارغاً والسحابة بها طلاب، اسحب طلاب السحابة فوراً
+    if ((!students || students.length === 0) && cloudStudents.length > 0) {
+        students = cloudStudents;
+    } else if (isLocalPriority || cloudStudents.length > 0) {
         const studentMap = new Map();
-        filterDeleted(cloudData.students, "code", "students").forEach(s => studentMap.set(String(s.code).trim(), s));
+        cloudStudents.forEach(s => studentMap.set(String(s.code).trim(), s));
         (students || []).forEach(s => { if (s && s.code) studentMap.set(String(s.code).trim(), s); });
         students = Array.from(studentMap.values()).filter(s => !(del.students || []).includes(String(s.code).trim()));
+    }
 
-        // 2. المجموعات
+    if ((!groups || groups.length === 0) && cloudGroups.length > 0) {
+        groups = cloudGroups;
+    } else if (isLocalPriority || cloudGroups.length > 0) {
         const groupMap = new Map();
-        filterDeleted(cloudData.groups, "name", "groups").forEach(g => groupMap.set(String(g.name).trim(), g));
+        cloudGroups.forEach(g => groupMap.set(String(g.name).trim(), g));
         (groups || []).forEach(g => { if (g && g.name) groupMap.set(String(g.name).trim(), g); });
         groups = Array.from(groupMap.values()).filter(g => !(del.groups || []).includes(String(g.name).trim()));
+    }
 
-        // 3. الحصص
-        const sessionMap = new Map();
-        filterDeleted(cloudData.classSessions, "id", "sessions").forEach(cs => sessionMap.set(String(cs.id), cs));
-        (classSessions || []).forEach(ls => {
-            if (!ls || !ls.id) return;
-            const idStr = String(ls.id);
-            if (!sessionMap.has(idStr)) sessionMap.set(idStr, ls);
-            else {
-                const cs = sessionMap.get(idStr);
+   // 🛡️ دمج الحصص وسجل الحضور (يحترم إلغاء الحضور التام ولا يعيد الطالب المحذوف)
+    const sessionMap = new Map();
+    cloudSessions.forEach(cs => { 
+        if (cs && cs.id) sessionMap.set(String(cs.id).trim(), cs); 
+    });
+
+    (classSessions || []).forEach(ls => {
+        if (!ls || !ls.id) return;
+        const idStr = String(ls.id).trim();
+        if ((del.sessions || []).includes(idStr)) return;
+
+        if (!sessionMap.has(idStr)) {
+            sessionMap.set(idStr, ls);
+        } else {
+            const cs = sessionMap.get(idStr);
+            if (isLocalPriority) {
+                // 🔥 السحر هنا: لو التعديل محلي (مثل إلغاء حضور طالب)، نعتمد سجل الحضور المحلي (ls) فوراً ولا ندمج القديم من السحابة!
                 sessionMap.set(idStr, {
                     ...cs,
                     ...ls,
+                    attendance: { ...(ls.attendance || {}) },
+                    attendanceLog: { ...(ls.attendanceLog || {}) }
+                });
+            } else {
+                sessionMap.set(idStr, {
+                    ...cs,
                     attendance: { ...(cs.attendance || {}), ...(ls.attendance || {}) },
                     attendanceLog: { ...(cs.attendanceLog || {}), ...(ls.attendanceLog || {}) }
                 });
             }
-        });
+        }
+    });
+
+    if (sessionMap.size > 0 || isLocalPriority) {
         classSessions = Array.from(sessionMap.values()).filter(s => !(del.sessions || []).includes(String(s.id).trim()));
-
-        // 4. باقي الجداول (الامتحانات، الواجبات، المصاريف، الكتب، الجدول)
-        const mergeListWithDelete = (cloudArr, localArr, cat) => {
-            const map = new Map();
-            filterDeleted(cloudArr, "id", cat).forEach(i => map.set(String(i.id), i));
-            (localArr || []).forEach(i => { if (i && i.id) map.set(String(i.id), i); });
-            return Array.from(map.values()).filter(i => !(del[cat] || []).includes(String(i.id).trim()));
-        };
-
-        exams = mergeListWithDelete(cloudData.exams, exams, "exams");
-        homeworks = mergeListWithDelete(cloudData.homeworks, homeworks, "homeworks");
-        expenses = mergeListWithDelete(cloudData.expenses, expenses, "expenses");
-        books = mergeListWithDelete(cloudData.books, books, "books");
-        schedule = mergeListWithDelete(cloudData.schedule, schedule, "schedule");
-    } else {
-        // عند فتح الصفحة لأول مرة (قراءة من السحابة مباشرة إذا كانت السحابة بها بيانات)
-        const toArr = (obj) => Array.isArray(obj) ? obj : Object.values(obj || {}).filter(Boolean);
-        if (cloudData.students !== undefined) students = toArr(cloudData.students);
-        if (cloudData.groups !== undefined) groups = toArr(cloudData.groups);
-        if (cloudData.classSessions !== undefined) classSessions = toArr(cloudData.classSessions);
-        if (cloudData.exams !== undefined) exams = toArr(cloudData.exams);
-        if (cloudData.homeworks !== undefined) homeworks = toArr(cloudData.homeworks);
-        if (cloudData.expenses !== undefined) expenses = toArr(cloudData.expenses);
-        if (cloudData.books !== undefined) books = toArr(cloudData.books);
-        if (cloudData.schedule !== undefined) schedule = toArr(cloudData.schedule);
-        if (cloudData.financeRecords !== undefined) financeRecords = cloudData.financeRecords || {};
-        if (cloudData.monthlyPayments !== undefined) window.monthlyPayments = cloudData.monthlyPayments || {};
-        if (cloudData.onlineExams !== undefined) window.fetchedOnlineExams = toArr(cloudData.onlineExams);
     }
 
-    // حفظ النسخة النهائية محلياً بهدوء
+    const mergeGradedItems = (cloudArr, localArr, cat) => {
+        const map = new Map();
+        filterDeleted(cloudArr, "id", cat).forEach(ci => map.set(String(ci.id).trim(), ci));
+        (localArr || []).forEach(li => {
+            if (!li || !li.id) return;
+            const idStr = String(li.id).trim();
+            if (!map.has(idStr)) map.set(idStr, li);
+            else {
+                const ci = map.get(idStr);
+                map.set(idStr, {
+                    ...ci,
+                    ...(isLocalPriority ? li : ci),
+                    grades: { ...(ci.grades || {}), ...(li.grades || {}) }
+                });
+            }
+        });
+        return Array.from(map.values()).filter(i => !(del[cat] || []).includes(String(i.id).trim()));
+    };
+
+    exams = mergeGradedItems(cloudData.exams, exams, "exams");
+    homeworks = mergeGradedItems(cloudData.homeworks, homeworks, "homeworks");
+
+    const mergeSimpleList = (cloudArr, localArr, cat) => {
+        const map = new Map();
+        filterDeleted(cloudArr, "id", cat).forEach(i => map.set(String(i.id).trim(), i));
+        (localArr || []).forEach(i => { if (i && i.id) map.set(String(i.id).trim(), i); });
+        return Array.from(map.values()).filter(i => !(del[cat] || []).includes(String(i.id).trim()));
+    };
+
+    expenses = mergeSimpleList(cloudData.expenses, expenses, "expenses");
+    books = mergeSimpleList(cloudData.books, books, "books");
+    schedule = mergeSimpleList(cloudData.schedule, schedule, "schedule");
+
+    if (cloudData.financeRecords) {
+        const mergedFin = { ...(cloudData.financeRecords || {}) };
+        Object.keys(financeRecords || {}).forEach(k => {
+            mergedFin[k] = { ...(mergedFin[k] || {}), ...(financeRecords[k] || {}) };
+        });
+        financeRecords = mergedFin;
+    }
+    if (cloudData.monthlyPayments) {
+        const mergedMp = { ...(cloudData.monthlyPayments || {}) };
+        Object.keys(window.monthlyPayments || {}).forEach(k => {
+            mergedMp[k] = { ...(mergedMp[k] || {}), ...(window.monthlyPayments[k] || {}) };
+        });
+        window.monthlyPayments = mergedMp;
+    }
+    if (cloudData.onlineExams !== undefined) {
+        window.fetchedOnlineExams = toArr(cloudData.onlineExams);
+    }
+
+    // تحديث إعدادات الحساب إن وجدت في السحابة
+    if (cloudData.settings) {
+        if (cloudData.settings.teacherName) originalSetItem.call(localStorage, "teacherName", cloudData.settings.teacherName);
+        if (cloudData.settings.centerName) originalSetItem.call(localStorage, "centerName", cloudData.settings.centerName);
+        if (cloudData.settings.adminPin) {
+            originalSetItem.call(localStorage, "adminPin", cloudData.settings.adminPin);
+            window.adminPin = cloudData.settings.adminPin;
+        }
+    }
+
     window.isIncomingSync = true;
     originalSetItem.call(localStorage, "students", JSON.stringify(students));
     originalSetItem.call(localStorage, "classSessions", JSON.stringify(classSessions));
@@ -923,7 +983,25 @@ function mergeLocalAndCloudData(cloudData, isLocalPriority = false) {
     window.isIncomingSync = false;
 }
 
-// 4️⃣ الدالة الموحدة للمزامنة والرفع الفوري
+// تحديث الجداول المعروضة فور انتهاء السحب من الفايربيز
+function refreshVisibleViewsAfterSync() {
+    try {
+        if (document.getElementById("total-students")) document.getElementById("total-students").innerText = students.length;
+        if (document.getElementById("total-groups")) document.getElementById("total-groups").innerText = groups.length;
+        if (document.getElementById("dashboard-view")?.style.display !== "none" && typeof renderDashboardCharts === "function") renderDashboardCharts();
+        if (document.getElementById("students-overview")?.style.display === "block" && typeof renderTable === "function") renderTable();
+        if (document.getElementById("groups-overview")?.style.display === "block" && typeof renderGroupCards === "function") renderGroupCards();
+        if (document.getElementById("group-details-view")?.style.display === "block" && typeof renderGroupStudentsTable === "function") renderGroupStudentsTable();
+        if (document.getElementById("sessions-overview")?.style.display === "block" && typeof renderSessionCards === "function") renderSessionCards();
+        if (document.getElementById("session-details-view")?.style.display === "block" && currentActiveSessionId) {
+            const activeSess = classSessions.find(s => String(s.id) === String(currentActiveSessionId));
+            if (activeSess && typeof renderAttendanceTable === "function") renderAttendanceTable(activeSess);
+        }
+        if (typeof populateLevelDropdowns === "function") populateLevelDropdowns();
+    } catch (e) { console.error("UI Refresh Error:", e); }
+}
+
+// 4️⃣ الدالة الموحدة للسحب والرفع (مربوطة بـ saad-62e70/momagdy)
 window.smartTwoWaySync = async function(isPushAction = false) {
     if (!navigator.onLine) {
         updateNetworkBadgeUI("offline");
@@ -935,20 +1013,20 @@ window.smartTwoWaySync = async function(isPushAction = false) {
     updateNetworkBadgeUI("syncing");
 
     try {
-        const uid = typeof getSafeUid === "function" ? getSafeUid() : "Historia_System_Master";
-        const dbUrl = `https://historya-el3alamy-default-rtdb.europe-west1.firebasedatabase.app/${uid}/data.json`;
+        const uid = "momagdy";
+        // 🔥 الرابط الصحيح لسيرفر البشمؤرخ مستر محمد مجدي
+        const dbUrl = `https://saad-62e70-default-rtdb.europe-west1.firebasedatabase.app/${uid}/data.json`;
 
-        const hadLocalEdits = window.hasPendingOfflineChanges || isPushAction;
+        const hadLocalEdits = (window.hasPendingOfflineChanges || isPushAction) && window.isInitialCloudLoadDone;
 
         const res = await fetch(dbUrl);
-        if (!res.ok) throw new Error("Firebase fetch error");
+        if (!res.ok) throw new Error("Firebase fetch error: " + res.status);
         const cloudData = (await res.json()) || {};
 
-        // دمج البيانات مع احترام المحذوفات
         mergeLocalAndCloudData(cloudData, hadLocalEdits);
+        window.isInitialCloudLoadDone = true;
 
-        // إذا كان هناك تعديل أو حذف محلي، نرفع النسخة النظيفة فوراً إلى السحابة
-        if (hadLocalEdits) {
+        if (hadLocalEdits && (students.length > 0 || groups.length > 0 || classSessions.length > 0)) {
             const payload = {
                 students: students || [],
                 classSessions: classSessions || [],
@@ -971,7 +1049,6 @@ window.smartTwoWaySync = async function(isPushAction = false) {
 
             if (!pushRes.ok) throw new Error("Firebase push error");
 
-            // بعد نجاح الرفع للفايربيز، نصفر سجل المحذوفات المؤقت
             window.deletedItemsRegistry = { students:[], groups:[], sessions:[], exams:[], homeworks:[], expenses:[], books:[], schedule:[] };
             originalSetItem.call(localStorage, "deletedItemsRegistry", JSON.stringify(window.deletedItemsRegistry));
             window.hasPendingOfflineChanges = false;
@@ -991,6 +1068,10 @@ window.smartTwoWaySync = async function(isPushAction = false) {
 
 window.syncDataToBot = () => window.smartTwoWaySync(true);
 window.loadDataFromFirebase = () => window.smartTwoWaySync(false);
+
+window.addEventListener("online", () => window.smartTwoWaySync(true));
+window.addEventListener("offline", () => updateNetworkBadgeUI("offline"));
+
 // ==========================================
 // 5. إدارة الجدول الأسبوعي (النسخة المرنة الديناميكية)
 // ==========================================
@@ -3772,8 +3853,8 @@ window.manageClearAction = async function(type) {
         return;
     }
 
-    const uid = typeof getSafeUid === "function" ? getSafeUid() : "Historia_System_Master";
-    const dbUrl = `https://historya-el3alamy-default-rtdb.europe-west1.firebasedatabase.app/${uid}/data.json`;
+    const uid = "momagdy";
+    const dbUrl = `https://saad-62e70-default-rtdb.europe-west1.firebasedatabase.app/${uid}/data.json`;
 
     window.isIncomingSync = true; // إيقاف المراقب التلقائي مؤقتاً لنرفع الحذف المباشر
 
