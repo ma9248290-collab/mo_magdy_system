@@ -12173,42 +12173,30 @@ window.backToExams = function() {
 };
 
 // =========================================================
-// 🛠️ الحل النهائي لزر إزالة الطالب من المجموعة (يدعم الكود والـ Index والسطر)
+// 🎯 الحل القاطع لإزالة الطالب الصحيح من المجموعة (يقرأ من السطر المضغوط مباشرة)
 // =========================================================
 window.removeStudentFromGroup = function(param) {
-    const val = param !== undefined && param !== null ? String(param).trim() : "";
     let student = null;
 
-    // 1. البحث المباشر بالكود أو الهاتف أو الاسم
-    student = students.find(s => 
-        s && (
-            String(s.code).trim() === val || 
-            String(s.phone).trim() === val || 
-            String(s.parentPhone).trim() === val ||
-            String(s.name).trim() === val
-        )
-    );
-
-    // 2. إذا كان الزر يمرر ترتيب الطالب (Index) في مصفوفة students العامة أو مصفوفة المجموعة
-    if (!student && /^\d+$/.test(val)) {
-        const idx = parseInt(val, 10);
-        // فحص هل هو index داخل طلاب المجموعة الحالية أولاً
-        const groupStudents = students.filter(s => s && s.group === currentActiveGroup);
-        if (groupStudents[idx]) {
-            student = groupStudents[idx];
-        } else if (students[idx]) {
-            student = students[idx];
+    // 1️⃣ الأولوية القصوى: قراءة كود الطالب مباشرة من أول عمود في السطر الذي ضغطت عليه!
+    if (typeof event !== "undefined" && event && event.target) {
+        const row = event.target.closest("tr");
+        if (row && row.cells && row.cells[0]) {
+            const rowCode = row.cells[0].innerText.trim();
+            if (rowCode) {
+                student = students.find(s => s && String(s.code).trim() === rowCode);
+            }
         }
     }
 
-    // 3. خطة بديلة قاطعة: قراءة كود الطالب مباشرة من أول خلية في السطر الذي ضغطت عليه!
-    if (!student && typeof event !== "undefined" && event && event.target) {
-        const row = event.target.closest("tr");
-        if (row) {
-            const firstCellText = row.cells[0] ? row.cells[0].innerText.trim() : "";
-            if (firstCellText) {
-                student = students.find(s => s && String(s.code).trim() === firstCellText);
-            }
+    // 2️⃣ خطة بديلة إذا لم يُلتقط الحدث: البحث بالكود أولاً ثم بترتيب المصفوفة العامة (students)
+    if (!student && param !== undefined && param !== null) {
+        const val = String(param).trim();
+        student = students.find(s => s && String(s.code).trim() === val);
+        
+        if (!student && /^\d+$/.test(val)) {
+            const idx = parseInt(val, 10);
+            if (students[idx]) student = students[idx];
         }
     }
 
@@ -12220,23 +12208,23 @@ window.removeStudentFromGroup = function(param) {
     const oldGroupName = student.group || currentActiveGroup;
     const cleanCode = String(student.code).trim();
 
-    customConfirm(`هل أنت متأكد من إزالة الطالب (${student.name}) من مجموعة (${oldGroupName})؟`, async () => {
-        // 1. إزالة الطالب من المجموعة
+    customConfirm(`هل أنت متأكد من إزالة الطالب (${student.name} - كود: ${cleanCode}) من مجموعة (${oldGroupName})؟`, async () => {
+        // 1. تفريغ المجموعة من بيانات الطالب
         student.group = "";
         window.hasPendingOfflineChanges = true;
         localStorage.setItem("students", JSON.stringify(students));
 
-        // 2. تسجيل في سجل النظام
+        // 2. تسجيل الحركة في سجل النظام
         if (typeof addSystemLog === "function") {
             addSystemLog("إزالة من مجموعة 📁", `تم إزالة الطالب: ${student.name} (كود: ${cleanCode}) من مجموعة: ${oldGroupName}`);
         }
 
-        // 3. تحديث جدول المجموعة وكروت المجموعات فوراً
+        // 3. تحديث جدول المجموعة وكروت المجموعات فوراً على الشاشة
         if (typeof renderGroupStudentsTable === "function") renderGroupStudentsTable();
         if (typeof renderGroupCards === "function") renderGroupCards();
         if (typeof showToast === "function") showToast(`تم إزالة (${student.name}) من المجموعة بنجاح ✅`, "success");
 
-        // 4. حفظ التعديل في الفايربيز فوراً
+        // 4. رفع التعديل مباشرة إلى الفايربيز
         try {
             const uid = typeof getSafeUid === "function" ? getSafeUid() : "momagdy";
             const baseDomain = (uid === "momagdy") 
@@ -12252,4 +12240,39 @@ window.removeStudentFromGroup = function(param) {
             console.error("Group Removal Sync Error:", err);
         }
     });
+};
+
+
+// تأمين زر نقل الطالب لمجموعة أخرى (🔄) ليقرأ من نفس السطر بدقة 100%
+window.openMoveGroupModal = function(param) {
+    let studentIndex = -1;
+
+    if (typeof event !== "undefined" && event && event.target) {
+        const row = event.target.closest("tr");
+        if (row && row.cells && row.cells[0]) {
+            const rowCode = row.cells[0].innerText.trim();
+            studentIndex = students.findIndex(s => s && String(s.code).trim() === rowCode);
+        }
+    }
+
+    if (studentIndex === -1 && param !== undefined) {
+        studentIndex = students.findIndex(s => s && String(s.code).trim() === String(param).trim());
+        if (studentIndex === -1 && !isNaN(parseInt(param))) studentIndex = parseInt(param);
+    }
+
+    const st = students[studentIndex];
+    if (!st) return showToast("لم يتم العثور على الطالب!", "error");
+
+    document.getElementById("moveStIndex").value = studentIndex;
+    document.getElementById("moveStName").innerText = `${st.name} (كود: ${st.code})`;
+    document.getElementById("moveStCurrentGroup").innerText = st.group || "بدون مجموعة";
+
+    const select = document.getElementById("moveStNewGroup");
+    if (select) {
+        select.innerHTML = groups
+            .filter(g => g.name !== st.group && (!st.level || g.level === st.level))
+            .map(g => `<option value="${g.name}">${g.name} (${g.level})</option>`)
+            .join("");
+    }
+    openModal("moveGroupModal");
 };
